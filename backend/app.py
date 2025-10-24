@@ -42,6 +42,8 @@ from services.device_service import DeviceService
 from services.phone_management_service import PhoneManagementService
 from services.samsung_galaxy_service import SamsungGalaxyService
 from services.payment_service import SubscriptionService
+from services.token_service import TokenService
+from services.backup_service import initialize_backup_service, get_backup_service
 from models.template import BarcodeTemplate, TemplateManager
 from models.database import DatabaseManager
 from utils.file_utils import save_uploaded_file, list_files_in_directory, cleanup_old_files, get_safe_filename
@@ -50,7 +52,8 @@ from routes.payments import router as payments_router
 from routes.auth import router as auth_router, get_current_user
 from routes.tokens import router as tokens_router
 from routes.collections import router as collections_router
-from routes.database_management import router as database_management_router
+from routes.admin import router as admin_router
+from routes.database_management_simple import router as database_management_router
 
 # Initialize FastAPI app
 app = FastAPI(

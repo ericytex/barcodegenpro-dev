@@ -970,3 +970,84 @@ class DatabaseManager:
                     updated_at=row[14]
                 ))
             return models
+    def get_database_info(self) -> Dict[str, Any]:
+        """Get comprehensive database information for health checks."""
+        db_exists = os.path.exists(self.db_path)
+        db_size = os.path.getsize(self.db_path) if db_exists else 0
+        db_permissions = oct(os.stat(self.db_path).st_mode & 0o777) if db_exists else "N/A"
+
+        last_backup = None
+        if os.path.exists(self.backup_dir):
+            backup_files = sorted([f for f in os.listdir(self.backup_dir) if f.startswith("barcode_generator_backup_") and f.endswith(".db.gz")], reverse=True)
+            if backup_files:
+                last_backup = backup_files[0]
+
+        return {
+            "database_path": self.db_path,
+            "database_exists": db_exists,
+            "database_size": db_size,
+            "database_permissions": db_permissions,
+            "backup_enabled": self.backup_enabled,
+            "backup_dir": self.backup_dir,
+            "last_backup": last_backup,
+        }
+
+    def get_database_statistics(self) -> Dict[str, Any]:
+        """Get comprehensive database statistics."""
+        with get_connection_context() as conn:
+            cursor = conn.cursor()
+            
+            # Get table counts
+            cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
+            tables = cursor.fetchall()
+            
+            table_counts = {}
+            total_records = 0
+            
+            for table in tables:
+                table_name = table[0]
+                cursor.execute(f"SELECT COUNT(*) FROM {table_name}")
+                count = cursor.fetchone()[0]
+                table_counts[table_name] = count
+                total_records += count
+            
+            # Get database size
+            db_size = os.path.getsize(self.db_path) if os.path.exists(self.db_path) else 0
+            
+            return {
+                "total_tables": len(tables),
+                "total_records": total_records,
+                "database_size_bytes": db_size,
+                "database_size_mb": round(db_size / (1024 * 1024), 2),
+                "table_counts": table_counts,
+                "last_updated": datetime.now().isoformat()
+            }
+
+    def optimize_database(self):
+        """Optimize database by running VACUUM and ANALYZE."""
+        with get_connection_context() as conn:
+            cursor = conn.cursor()
+            cursor.execute("VACUUM")
+            cursor.execute("ANALYZE")
+            conn.commit()
+
+    def check_integrity(self) -> str:
+        """Check database integrity."""
+        with get_connection_context() as conn:
+            cursor = conn.cursor()
+            cursor.execute("PRAGMA integrity_check")
+            result = cursor.fetchone()
+            return result[0] if result else "unknown"
+
+    def export_database(self) -> str:
+        """Export database as SQL dump."""
+        import subprocess
+        export_path = os.path.join(os.path.dirname(self.db_path), f"export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.sql")
+        
+        try:
+            subprocess.run([
+                "sqlite3", self.db_path, ".dump"
+            ], stdout=open(export_path, 'w'), check=True)
+            return export_path
+        except Exception as e:
+            raise Exception(f"Database export failed: {e}")

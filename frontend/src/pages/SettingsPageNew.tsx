@@ -12,6 +12,9 @@ import { DeviceManagement } from "@/components/DeviceManagement";
 import { SimpleDeviceManagement } from "@/components/SimpleDeviceManagement";
 import { UserManager } from "@/components/UserManager";
 import { DatabaseManagement } from "@/components/DatabaseManagement";
+import { useMenuSettings } from "@/contexts/MenuContext";
+import { useAuth } from "@/contexts/AuthContext";
+import { Input } from "@/components/ui/input";
 
 interface PaymentProvider {
   id: string;

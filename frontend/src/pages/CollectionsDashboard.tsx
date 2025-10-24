@@ -93,6 +93,8 @@ const CollectionsDashboard: React.FC = () => {
   const [apiKey, setApiKey] = useState('');
   const [configuring, setConfiguring] = useState(false);
   const [serviceStatus, setServiceStatus] = useState<any>(null);
+  const [optimusData, setOptimusData] = useState<any>(null);
+  const [loadingOptimus, setLoadingOptimus] = useState(false);
   
   // Filters
   const [limit, setLimit] = useState(50);
@@ -176,6 +178,31 @@ const CollectionsDashboard: React.FC = () => {
       }
     } catch (error) {
       console.error('Error loading stats:', error);
+    }
+  };
+
+  const loadOptimusData = async () => {
+    setLoadingOptimus(true);
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/payments/fetch-all-transactions`, {
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('access_token')}`
+        }
+      });
+      
+      const data = await response.json();
+      
+      if (data.success) {
+        setOptimusData(data);
+        toast.success(`Loaded ${data.total_transactions} transactions from Optimus`);
+      } else {
+        toast.error(data.message || 'Failed to load Optimus data');
+      }
+    } catch (error) {
+      console.error('Error loading Optimus data:', error);
+      toast.error('Failed to load Optimus data');
+    } finally {
+      setLoadingOptimus(false);
     }
   };
 
@@ -278,6 +305,15 @@ const CollectionsDashboard: React.FC = () => {
         </div>
         <div className="flex items-center gap-2">
           <Button
+            onClick={loadOptimusData}
+            disabled={loadingOptimus}
+            variant="outline"
+            size="sm"
+          >
+            <RefreshCw className={`h-4 w-4 mr-2 ${loadingOptimus ? 'animate-spin' : ''}`} />
+            Load Optimus Data
+          </Button>
+          <Button
             onClick={refreshCollections}
             disabled={refreshing}
             variant="outline"
@@ -321,6 +357,97 @@ const CollectionsDashboard: React.FC = () => {
               <div className="flex items-center gap-2">
                 <span className="text-sm font-medium">Service:</span>
                 <Badge variant="default">{serviceStatus.service_status}</Badge>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Optimus Real-time Data */}
+      {optimusData && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <TrendingUp className="h-5 w-5" />
+              Optimus Real-time Collections
+            </CardTitle>
+            <CardDescription>
+              Live data from Optimus API - {optimusData.total_transactions} total transactions
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+              <div className="flex items-center">
+                <DollarSign className="h-8 w-8 text-green-600" />
+                <div className="ml-4">
+                  <p className="text-sm font-medium text-muted-foreground">Total Transactions</p>
+                  <p className="text-2xl font-bold">{optimusData.total_transactions}</p>
+                </div>
+              </div>
+              
+              <div className="flex items-center">
+                <CheckCircle className="h-8 w-8 text-green-600" />
+                <div className="ml-4">
+                  <p className="text-sm font-medium text-muted-foreground">Completed</p>
+                  <p className="text-2xl font-bold">
+                    {optimusData.data?.data?.filter((t: any) => t.transaction_status === 'completed').length || 0}
+                  </p>
+                </div>
+              </div>
+              
+              <div className="flex items-center">
+                <Clock className="h-8 w-8 text-yellow-600" />
+                <div className="ml-4">
+                  <p className="text-sm font-medium text-muted-foreground">Pending</p>
+                  <p className="text-2xl font-bold">
+                    {optimusData.data?.data?.filter((t: any) => t.transaction_status === 'pending-approval').length || 0}
+                  </p>
+                </div>
+              </div>
+              
+              <div className="flex items-center">
+                <BarChart3 className="h-8 w-8 text-blue-600" />
+                <div className="ml-4">
+                  <p className="text-sm font-medium text-muted-foreground">Total Amount</p>
+                  <p className="text-2xl font-bold">
+                    {optimusData.data?.data?.reduce((sum: number, t: any) => sum + parseInt(t.total_amount || 0), 0).toLocaleString()} UGX
+                  </p>
+                </div>
+              </div>
+            </div>
+            
+            {/* Recent Transactions */}
+            <div className="mt-6">
+              <h4 className="text-lg font-semibold mb-3">Recent Transactions</h4>
+              <div className="space-y-2 max-h-60 overflow-y-auto">
+                {optimusData.data?.data?.slice(0, 10).map((transaction: any, index: number) => (
+                  <div key={index} className="flex items-center justify-between p-3 border rounded-lg">
+                    <div className="flex items-center gap-3">
+                      <div className="flex items-center gap-2">
+                        {transaction.transaction_status === 'completed' ? 
+                          <CheckCircle className="h-4 w-4 text-green-500" /> :
+                          <Clock className="h-4 w-4 text-yellow-500" />
+                        }
+                        <span className="font-mono text-sm">
+                          {transaction.app_transaction_uid?.slice(0, 8)}...
+                        </span>
+                      </div>
+                      <span className="text-sm text-muted-foreground">
+                        {transaction.debit_phone_number}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <span className="font-medium">
+                        {parseInt(transaction.total_amount || 0).toLocaleString()} UGX
+                      </span>
+                      <Badge variant={
+                        transaction.transaction_status === 'completed' ? 'default' : 'secondary'
+                      }>
+                        {transaction.transaction_status}
+                      </Badge>
+                    </div>
+                  </div>
+                ))}
               </div>
             </div>
           </CardContent>

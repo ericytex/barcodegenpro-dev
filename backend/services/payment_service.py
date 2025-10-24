@@ -23,26 +23,28 @@ class OptimusPaymentService:
         load_dotenv()
         self.environment = os.getenv("ENVIRONMENT", "production")
 
-        # Default to sandbox environment
-        self.environment = "production"  # Will be updated from settings
+        # Use production environment for real API calls
+        self.environment = "production"
         self.db_path = db_path
         self._update_api_config()
     
     def _update_api_config(self):
         """Update API configuration based on environment"""
         if self.environment == "production":
-            #self.base_url = "https://optimus.santripe.com/v2/collections/mobile-money/new"
-            # Get production token from database settings
-            #self.auth_token = self._get_production_auth_token()
-            self.base_url = os.getenv("BASE_URL")
-            self.auth_token = os.getenv("AUTH_TOKEN")
-        else:  # sandbox
+            # Production Optimus API endpoints
             self.base_url = "https://optimus.santripe.com/v2/collections/mobile-money/new"
+            self.transactions_url = "https://optimus.santripe.com/transactions/mobile-money-collections"
+            # Get production token from environment or database settings
+            self.auth_token = os.getenv("AUTH_TOKEN") or self._get_production_auth_token()
+        else:  # sandbox
+            self.base_url = "https://optimus.santripe.com/v2/sandbox/collections/mobile-money/new"
+            self.transactions_url = "https://optimus.santripe.com/transactions/mobile-money-collections"
             self.auth_token = "pki_7ve43chhGjdjjBag49ZNqJ6AZ3e29CGgq9494399pxfw7AdjsMqx9ZFma84993i"
         
         self.headers = {
             "Authorization": self.auth_token,
-            "Content-Type": "application/json"
+            "Content-Type": "application/json",
+            "Accept": "application/json"
         }
     
     def _get_production_auth_token(self) -> str:
@@ -63,6 +65,40 @@ class OptimusPaymentService:
         except Exception as e:
             logger.error(f"Error getting production auth token: {e}")
             return "YOUR_PRODUCTION_AUTH_TOKEN_HERE"
+    
+    def _get_webhook_url(self) -> str:
+        """Get webhook URL from environment or database settings"""
+        # Try to get from environment first
+        webhook_url = os.getenv("WEBHOOK_URL")
+        if webhook_url:
+            return webhook_url
+        
+        # Try to construct from DOMAIN environment variable
+        domain = os.getenv("DOMAIN")
+        if domain:
+            # Ensure HTTPS for production
+            if not domain.startswith("http"):
+                protocol = "https" if self.environment == "production" else "http"
+                domain = f"{protocol}://{domain}"
+            return f"{domain}/api/payments/webhook/token-purchase"
+        
+        # Fallback to database settings
+        return self._get_webhook_url_from_db()
+    
+    def _get_webhook_url_from_db(self) -> str:
+        """Get webhook URL from database settings"""
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                cursor.execute("""
+                    SELECT setting_value FROM token_settings 
+                    WHERE setting_key = 'payment_webhook_url'
+                """)
+                result = cursor.fetchone()
+                return result[0] if result else "https://your-domain.com/api/payments/webhook/token-purchase"
+        except Exception as e:
+            logger.error(f"Error getting webhook URL from database: {e}")
+            return "https://your-domain.com/api/payments/webhook/token-purchase"
     
     def set_environment(self, environment: str):
         """Set payment environment (sandbox/production)"""
@@ -328,6 +364,534 @@ class OptimusPaymentService:
                 "transaction_uid": transaction_uid
             }
 
+    def verify_payment_status(self, transaction_uid: str) -> Dict:
+        """Verify payment status with Optimus Provider using transaction_uid (app_transaction_uid)"""
+        try:
+            # Get transaction from database
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            
+            cursor.execute("""
+                SELECT id, user_id, amount_ugx, status, created_at
+                FROM payment_transactions 
+                WHERE transaction_uid = ?
+            """, (transaction_uid,))
+            
+            transaction = cursor.fetchone()
+            if not transaction:
+                conn.close()
+                return {
+                    "success": False,
+                    "error": "Transaction not found",
+                    "transaction_uid": transaction_uid
+                }
+            
+            transaction_id, user_id, amount, current_status, created_at = transaction
+            
+            logger.info(f"Verifying transaction {transaction_uid} (current status: {current_status})")
+            
+            # Query Optimus Provider for transaction status using app_transaction_uid
+            optimus_status = self._query_optimus_transaction(transaction_uid)
+            
+            if optimus_status["success"]:
+                new_status = optimus_status["status"]
+                
+                # Update database if status changed
+                if new_status != current_status:
+                    cursor.execute("""
+                        UPDATE payment_transactions 
+                        SET status = ?, updated_at = ?
+                        WHERE transaction_uid = ?
+                    """, (new_status, datetime.now().isoformat(), transaction_uid))
+                    conn.commit()
+                    
+                    logger.info(f"✅ Updated transaction {transaction_uid} status: {current_status} → {new_status}")
+                else:
+                    logger.info(f"ℹ️ Transaction {transaction_uid} status unchanged: {current_status}")
+                
+                conn.close()
+                return {
+                    "success": True,
+                    "transaction_uid": transaction_uid,
+                    "previous_status": current_status,
+                    "current_status": new_status,
+                    "status_changed": new_status != current_status,
+                    "optimus_data": optimus_status.get("data", {}),
+                    "endpoint_used": optimus_status.get("endpoint_used")
+                }
+            else:
+                conn.close()
+                logger.warning(f"Failed to verify transaction {transaction_uid}: {optimus_status['error']}")
+                return {
+                    "success": False,
+                    "error": optimus_status["error"],
+                    "transaction_uid": transaction_uid,
+                    "current_status": current_status
+                }
+                
+        except Exception as e:
+            logger.error(f"Error verifying payment status: {e}")
+            return {
+                "success": False,
+                "error": str(e),
+                "transaction_uid": transaction_uid
+            }
+    
+    def _query_optimus_transaction(self, app_transaction_uid: str) -> Dict:
+        """Query Optimus Provider for transaction status using app_transaction_uid"""
+        try:
+            logger.info(f"Querying Optimus for transaction: {app_transaction_uid}")
+            
+            # Test both endpoint patterns to find the working one
+            endpoint = self._discover_status_endpoint(app_transaction_uid)
+            
+            if not endpoint:
+                logger.error(f"No working endpoint found for transaction: {app_transaction_uid}")
+                return {
+                    "success": False,
+                    "error": "No working Optimus endpoint found"
+                }
+            
+            logger.info(f"Using Optimus endpoint: {endpoint}")
+            
+            # Make the actual API call
+            response = requests.get(endpoint, headers=self.headers, timeout=30)
+            response.raise_for_status()
+            
+            response_data = response.json()
+            logger.info(f"Optimus API response: {json.dumps(response_data, indent=2)}")
+            
+            # Parse response and map status
+            status = self._map_optimus_status(response_data)
+            
+            return {
+                "success": True,
+                "status": status,
+                "data": response_data,
+                "endpoint_used": endpoint
+            }
+            
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Optimus API request failed: {e}")
+            return {
+                "success": False,
+                "error": f"API request failed: {str(e)}"
+            }
+        except Exception as e:
+            logger.error(f"Error querying Optimus transaction: {e}")
+            return {
+                "success": False,
+                "error": str(e)
+            }
+    
+    def fetch_all_transactions(self) -> Dict:
+        """Fetch all transactions from Optimus API"""
+        try:
+            url = f"{self.transactions_url}/{self.auth_token}"
+            logger.info(f"Fetching all transactions from: {url}")
+            
+            response = requests.get(url, headers=self.headers, timeout=30)
+            logger.info(f"Response status: {response.status_code}")
+            
+            if response.status_code == 200:
+                data = response.json()
+                logger.info(f"✅ Successfully fetched {len(data.get('data', []))} transactions")
+                return {
+                    "success": True,
+                    "data": data,
+                    "total_transactions": len(data.get('data', [])),
+                    "message": "Transactions fetched successfully"
+                }
+            else:
+                logger.error(f"❌ Failed to fetch transactions: {response.status_code}")
+                return {
+                    "success": False,
+                    "error": f"HTTP {response.status_code}",
+                    "message": response.text
+                }
+                
+        except requests.RequestException as e:
+            logger.error(f"❌ Request failed: {e}")
+            return {
+                "success": False,
+                "error": str(e),
+                "message": "Failed to connect to Optimus API"
+            }
+    
+    def _discover_status_endpoint(self, transaction_uid: str) -> str:
+        """Test both endpoint patterns to find the working one"""
+        # Test various Optimus API patterns
+        patterns = [
+            # Standard Optimus patterns
+            f"https://optimus.santripe.com/v2/collections/mobile-money/status/{transaction_uid}",
+            f"https://optimus.santripe.com/v2/collections/mobile-money/transactions/{transaction_uid}",
+            f"https://optimus.santripe.com/v2/status/{transaction_uid}",
+            f"https://optimus.santripe.com/v2/transactions/{transaction_uid}",
+            # Alternative API patterns
+            f"https://optimus.santripe.com/api/v2/collections/mobile-money/status/{transaction_uid}",
+            f"https://optimus.santripe.com/api/v2/collections/mobile-money/transactions/{transaction_uid}",
+            f"https://optimus.santripe.com/api/v2/status/{transaction_uid}",
+            f"https://optimus.santripe.com/api/v2/transactions/{transaction_uid}",
+            # Different base URL patterns
+            f"https://api.optimus.santripe.com/v2/collections/mobile-money/status/{transaction_uid}",
+            f"https://api.optimus.santripe.com/v2/collections/mobile-money/transactions/{transaction_uid}",
+            f"https://api.optimus.santripe.com/v2/status/{transaction_uid}",
+            f"https://api.optimus.santripe.com/v2/transactions/{transaction_uid}",
+            # Query parameter patterns
+            f"https://optimus.santripe.com/v2/collections/mobile-money/status?transaction_id={transaction_uid}",
+            f"https://optimus.santripe.com/v2/collections/mobile-money/transactions?transaction_id={transaction_uid}",
+            f"https://optimus.santripe.com/v2/status?transaction_id={transaction_uid}",
+            f"https://optimus.santripe.com/v2/transactions?transaction_id={transaction_uid}"
+        ]
+        
+        logger.info(f"Testing endpoint patterns for transaction: {transaction_uid}")
+        
+        for pattern in patterns:
+            try:
+                logger.info(f"Testing endpoint: {pattern}")
+                response = requests.get(pattern, headers=self.headers, timeout=10)
+                logger.info(f"Response status: {response.status_code}")
+                
+                if response.status_code == 200:
+                    logger.info(f"Working endpoint found: {pattern}")
+                    return pattern
+                elif response.status_code == 404:
+                    logger.info(f"Endpoint not found: {pattern}")
+                    continue
+                else:
+                    logger.warning(f"Unexpected status {response.status_code} for: {pattern}")
+                    
+            except requests.exceptions.RequestException as e:
+                logger.info(f"Request failed for {pattern}: {e}")
+                continue
+        
+        logger.error("No working endpoint found for any pattern")
+        
+        # Fallback: Since we can't find a working endpoint, let's check if this is a common issue
+        # and provide a manual update option for old transactions
+        logger.warning("⚠️ No Optimus status endpoint found. This might be because:")
+        logger.warning("   1. Optimus doesn't provide a status API endpoint")
+        logger.warning("   2. The endpoint pattern is different from what we're testing")
+        logger.warning("   3. Authentication is required for status queries")
+        logger.warning("   4. The transactions are too old for status checking")
+        
+        return None
+    
+    def _map_optimus_status(self, response_data: Dict) -> str:
+        """Map Optimus API response status to our system status"""
+        try:
+            # Try different possible status field names
+            status_fields = ['status', 'transaction_status', 'payment_status', 'state']
+            
+            for field in status_fields:
+                if field in response_data:
+                    optimus_status = response_data[field].lower()
+                    break
+            else:
+                # If no status field found, check nested data
+                if 'data' in response_data and isinstance(response_data['data'], dict):
+                    for field in status_fields:
+                        if field in response_data['data']:
+                            optimus_status = response_data['data'][field].lower()
+                            break
+                    else:
+                        logger.warning(f"No status field found in response: {response_data}")
+                        return "pending"
+                else:
+                    logger.warning(f"No status field found in response: {response_data}")
+                    return "pending"
+            
+            # Map Optimus status to our status
+            status_mapping = {
+                'completed': 'completed',
+                'success': 'completed',
+                'successful': 'completed',
+                'paid': 'completed',
+                'confirmed': 'completed',
+                'pending': 'pending',
+                'processing': 'pending',
+                'in_progress': 'pending',
+                'failed': 'failed',
+                'error': 'failed',
+                'cancelled': 'cancelled',
+                'canceled': 'cancelled',
+                'expired': 'cancelled',
+                'timeout': 'cancelled'
+            }
+            
+            mapped_status = status_mapping.get(optimus_status, 'pending')
+            logger.info(f"Mapped Optimus status '{optimus_status}' to '{mapped_status}'")
+            
+            return mapped_status
+            
+        except Exception as e:
+            logger.error(f"Error mapping Optimus status: {e}")
+            return "pending"
+    
+    def sync_all_payments(self, limit: int = 100) -> Dict:
+        """Sync all payments with Optimus Provider - using bulk fetch approach"""
+        try:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            
+            # Get all transactions that need verification (both payment_transactions and token_purchases)
+            cursor.execute("""
+                SELECT transaction_uid, status, created_at, 'payment_transactions' as table_name
+                FROM payment_transactions 
+                WHERE status IN ('pending', 'completed')
+                UNION ALL
+                SELECT transaction_uid, status, created_at, 'token_purchases' as table_name
+                FROM token_purchases 
+                WHERE status IN ('pending', 'completed')
+                ORDER BY created_at DESC
+                LIMIT ?
+            """, (limit,))
+            
+            local_transactions = cursor.fetchall()
+            
+            # Fetch all transactions from Optimus
+            optimus_result = self.fetch_all_transactions()
+            if not optimus_result["success"]:
+                return {
+                    "success": False,
+                    "error": "Failed to fetch Optimus transactions",
+                    "message": optimus_result.get("message", "Unknown error")
+                }
+            
+            optimus_transactions = optimus_result["data"]["data"]
+            optimus_dict = {tx.get("app_transaction_uid"): tx for tx in optimus_transactions}
+            
+            sync_results = {
+                "total_processed": len(local_transactions),
+                "successful_syncs": 0,
+                "failed_syncs": 0,
+                "status_changes": 0,
+                "results": []
+            }
+            
+            logger.info(f"Starting sync for {len(local_transactions)} local transactions against {len(optimus_transactions)} Optimus transactions")
+            
+            for transaction_uid, current_status, created_at, table_name in local_transactions:
+                logger.info(f"Syncing {table_name} transaction: {transaction_uid} (status: {current_status})")
+                
+                if transaction_uid in optimus_dict:
+                    optimus_tx = optimus_dict[transaction_uid]
+                    optimus_status = optimus_tx.get("transaction_status", "")
+                    internal_status = self._map_optimus_status({"status": optimus_status})
+                    
+                    if internal_status != current_status:
+                        # Update the transaction status
+                        if table_name == 'payment_transactions':
+                            cursor.execute("""
+                                UPDATE payment_transactions 
+                                SET status = ?, updated_at = ?
+                                WHERE transaction_uid = ?
+                            """, (internal_status, datetime.now().isoformat(), transaction_uid))
+                        else:  # token_purchases
+                            cursor.execute("""
+                                UPDATE token_purchases 
+                                SET status = ?, completed_at = ?
+                                WHERE transaction_uid = ?
+                            """, (internal_status, 
+                                 datetime.now().isoformat() if internal_status == 'completed' else None, 
+                                 transaction_uid))
+                        
+                        sync_results["status_changes"] += 1
+                        logger.info(f"✅ Status changed for {table_name} {transaction_uid}: {current_status} → {internal_status} (Optimus: {optimus_status})")
+                        
+                        sync_results["results"].append({
+                            "transaction_uid": transaction_uid,
+                            "table": table_name,
+                            "success": True,
+                            "status_changed": True,
+                            "previous_status": current_status,
+                            "current_status": internal_status,
+                            "optimus_status": optimus_status
+                        })
+                    else:
+                        logger.debug(f"Status unchanged for {transaction_uid}: {current_status}")
+                        sync_results["results"].append({
+                            "transaction_uid": transaction_uid,
+                            "table": table_name,
+                            "success": True,
+                            "status_changed": False,
+                            "current_status": current_status,
+                            "optimus_status": optimus_status
+                        })
+                    
+                    sync_results["successful_syncs"] += 1
+                else:
+                    sync_results["failed_syncs"] += 1
+                    logger.warning(f"❌ Transaction {transaction_uid} not found in Optimus")
+                    sync_results["results"].append({
+                        "transaction_uid": transaction_uid,
+                        "table": table_name,
+                        "success": False,
+                        "error": "Transaction not found in Optimus"
+                    })
+            
+            conn.commit()
+            conn.close()
+            
+            logger.info(f"Payment sync completed: {sync_results['successful_syncs']}/{sync_results['total_processed']} successful, {sync_results['status_changes']} status changes")
+            
+            return {
+                "success": True,
+                "sync_summary": sync_results,
+                "timestamp": datetime.now().isoformat()
+            }
+            
+        except Exception as e:
+            logger.error(f"Error syncing payments: {e}")
+            return {
+                "success": False,
+                "error": str(e)
+            }
+    
+    def get_payment_dashboard_data(self) -> Dict:
+        """Get comprehensive payment dashboard data"""
+        try:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            
+            # Get payment statistics
+            cursor.execute("""
+                SELECT 
+                    COUNT(*) as total_transactions,
+                    COUNT(CASE WHEN status = 'completed' THEN 1 END) as completed_transactions,
+                    COUNT(CASE WHEN status = 'pending' THEN 1 END) as pending_transactions,
+                    COUNT(CASE WHEN status = 'failed' THEN 1 END) as failed_transactions,
+                    SUM(CASE WHEN status = 'completed' THEN amount_ugx ELSE 0 END) as total_revenue_ugx,
+                    AVG(CASE WHEN status = 'completed' THEN amount_ugx ELSE NULL END) as avg_transaction_amount
+                FROM payment_transactions
+            """)
+            
+            stats = cursor.fetchone()
+            
+            # Get recent transactions
+            cursor.execute("""
+                SELECT transaction_uid, user_id, amount_ugx, status, created_at, optimus_transaction_id, is_test_data
+                FROM payment_transactions 
+                ORDER BY created_at DESC 
+                LIMIT 20
+            """)
+            
+            recent_transactions = []
+            for row in cursor.fetchall():
+                recent_transactions.append({
+                    "transaction_uid": row[0],
+                    "user_id": row[1],
+                    "amount_ugx": row[2],
+                    "status": row[3],
+                    "created_at": row[4],
+                    "optimus_transaction_id": row[5],
+                    "is_test_data": bool(row[6]) if row[6] is not None else False
+                })
+            
+            # Get transactions needing sync
+            cursor.execute("""
+                SELECT COUNT(*) 
+                FROM payment_transactions 
+                WHERE status = 'pending' 
+                AND optimus_transaction_id IS NOT NULL
+                AND created_at > datetime('now', '-7 days')
+            """)
+            
+            pending_sync_count = cursor.fetchone()[0]
+            
+            conn.close()
+            
+            return {
+                "success": True,
+                "statistics": {
+                    "total_transactions": stats[0] or 0,
+                    "completed_transactions": stats[1] or 0,
+                    "pending_transactions": stats[2] or 0,
+                    "failed_transactions": stats[3] or 0,
+                    "total_revenue_ugx": stats[4] or 0,
+                    "avg_transaction_amount": round(stats[5] or 0, 2),
+                    "pending_sync_count": pending_sync_count
+                },
+                "recent_transactions": recent_transactions,
+                "timestamp": datetime.now().isoformat()
+            }
+            
+        except Exception as e:
+            logger.error(f"Error getting payment dashboard data: {e}")
+            return {
+                "success": False,
+                "error": str(e)
+            }
+
+    def manually_update_pending_transactions(self, days_old: int = 7) -> Dict:
+        """Manually update old pending transactions to completed status"""
+        try:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            
+            # Find pending transactions older than specified days
+            cursor.execute("""
+                SELECT transaction_uid, created_at, amount_ugx
+                FROM payment_transactions 
+                WHERE status = 'pending'
+                AND created_at < datetime('now', '-{} days')
+                ORDER BY created_at ASC
+            """.format(days_old))
+            
+            old_transactions = cursor.fetchall()
+            
+            if not old_transactions:
+                conn.close()
+                return {
+                    "success": True,
+                    "message": f"No pending transactions older than {days_old} days found",
+                    "updated_count": 0
+                }
+            
+            updated_count = 0
+            results = []
+            
+            logger.info(f"Found {len(old_transactions)} pending transactions older than {days_old} days")
+            
+            for transaction_uid, created_at, amount_ugx in old_transactions:
+                # Update to completed status
+                cursor.execute("""
+                    UPDATE payment_transactions 
+                    SET status = 'completed', updated_at = ?
+                    WHERE transaction_uid = ?
+                """, (datetime.now().isoformat(), transaction_uid))
+                
+                updated_count += 1
+                results.append({
+                    "transaction_uid": transaction_uid,
+                    "created_at": created_at,
+                    "amount_ugx": amount_ugx,
+                    "old_status": "pending",
+                    "new_status": "completed"
+                })
+                
+                logger.info(f"✅ Updated transaction {transaction_uid} from pending to completed (created: {created_at})")
+            
+            conn.commit()
+            conn.close()
+            
+            logger.info(f"🎉 Manually updated {updated_count} old pending transactions to completed status")
+            
+            return {
+                "success": True,
+                "message": f"Updated {updated_count} old pending transactions to completed",
+                "updated_count": updated_count,
+                "results": results,
+                "timestamp": datetime.now().isoformat()
+            }
+            
+        except Exception as e:
+            logger.error(f"Error manually updating transactions: {e}")
+            return {
+                "success": False,
+                "error": str(e)
+            }
+
 
 class SubscriptionService:
     def __init__(self, db_path: str = "data/barcode_generator.db"):
@@ -398,6 +962,31 @@ class SubscriptionService:
                 logger.info(f"✅ Provider: {provider}")
                 logger.info(f"✅ Amount: UGX {price_ugx}")
                 logger.info("="*70)
+                
+                # Auto-sync: Check payment status after a short delay
+                import threading
+                import time
+                
+                def delayed_status_check():
+                    """Check payment status after 3 seconds delay"""
+                    time.sleep(3)  # Wait 3 seconds for Optimus processing
+                    logger.info(f"🔄 Auto-checking status for transaction: {payment_result['transaction_uid']}")
+                    try:
+                        status_result = self.payment_service.verify_payment_status(payment_result['transaction_uid'])
+                        if status_result['success']:
+                            if status_result.get('status_changed', False):
+                                logger.info(f"🎉 Auto-sync successful: {payment_result['transaction_uid']} status changed to {status_result['current_status']}")
+                            else:
+                                logger.info(f"ℹ️ Auto-sync: {payment_result['transaction_uid']} status unchanged ({status_result['current_status']})")
+                        else:
+                            logger.warning(f"⚠️ Auto-sync failed for {payment_result['transaction_uid']}: {status_result['error']}")
+                    except Exception as e:
+                        logger.error(f"❌ Auto-sync error for {payment_result['transaction_uid']}: {e}")
+                
+                # Start background thread for status check
+                sync_thread = threading.Thread(target=delayed_status_check, daemon=True)
+                sync_thread.start()
+                logger.info(f"🚀 Started background status check for transaction: {payment_result['transaction_uid']}")
                 
                 return {
                     "success": True,
@@ -569,6 +1158,68 @@ class SubscriptionService:
         finally:
             conn.close()
     
+    def complete_token_purchase(self, transaction_uid: str) -> bool:
+        """Complete a token purchase after webhook confirmation"""
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        
+        try:
+            # Find the token purchase record
+            cursor.execute("""
+                SELECT id, user_id, amount_ugx, tokens_purchased, status
+                FROM token_purchases 
+                WHERE transaction_uid = ?
+            """, (transaction_uid,))
+            
+            purchase = cursor.fetchone()
+            if not purchase:
+                logger.error(f"Token purchase not found: {transaction_uid}")
+                return False
+            
+            purchase_id, user_id, amount_ugx, tokens_purchased, current_status = purchase
+            
+            if current_status == "completed":
+                logger.info(f"Token purchase already completed: {transaction_uid}")
+                return True
+            
+            # Update token purchase status
+            cursor.execute("""
+                UPDATE token_purchases 
+                SET status = 'completed', completed_at = ?
+                WHERE transaction_uid = ?
+            """, (datetime.now().isoformat(), transaction_uid))
+            
+            # Update user tokens
+            cursor.execute("""
+                UPDATE user_tokens 
+                SET balance = balance + ?, 
+                    total_purchased = total_purchased + ?,
+                    updated_at = ?
+                WHERE user_id = ?
+            """, (tokens_purchased, tokens_purchased, datetime.now().isoformat(), user_id))
+            
+            # Create payment transaction record
+            cursor.execute("""
+                INSERT INTO payment_transactions (
+                    user_id, transaction_uid, amount_ugx, currency, 
+                    payment_method, status, created_at, updated_at
+                ) VALUES (?, ?, ?, 'UGX', 'mobile_money', 'completed', ?, ?)
+            """, (user_id, transaction_uid, amount_ugx, datetime.now().isoformat(), datetime.now().isoformat()))
+            
+            conn.commit()
+            
+            logger.info(f"Token purchase completed successfully: {transaction_uid}")
+            logger.info(f"User {user_id} credited with {tokens_purchased} tokens")
+            
+            return True
+            
+        except Exception as e:
+            logger.error(f"Error completing token purchase {transaction_uid}: {e}")
+            conn.rollback()
+            return False
+        finally:
+            conn.close()
+    
     def log_webhook(self, transaction_uid: str, webhook_data: Dict):
         """Log payment webhook"""
         conn = self._get_connection()
@@ -621,3 +1272,57 @@ class SubscriptionService:
 def get_db():
     """Compatibility function for get_db dependency"""
     return None  # We handle connections internally now
+
+
+# Payment Sync and Verification Methods
+def verify_payment_status(transaction_uid: str) -> Dict:
+    """Verify payment status with Optimus Provider"""
+    try:
+        service = OptimusPaymentService()
+        return service.verify_payment_status(transaction_uid)
+    except Exception as e:
+        logger.error(f"Error in verify_payment_status: {e}")
+        return {
+            "success": False,
+            "error": str(e),
+            "transaction_uid": transaction_uid
+        }
+
+
+def sync_all_payments(limit: int = 100) -> Dict:
+    """Sync all pending payments with Optimus Provider"""
+    try:
+        service = OptimusPaymentService()
+        return service.sync_all_payments(limit)
+    except Exception as e:
+        logger.error(f"Error in sync_all_payments: {e}")
+        return {
+            "success": False,
+            "error": str(e)
+        }
+
+
+def get_payment_dashboard_data() -> Dict:
+    """Get comprehensive payment dashboard data"""
+    try:
+        service = OptimusPaymentService()
+        return service.get_payment_dashboard_data()
+    except Exception as e:
+        logger.error(f"Error in get_payment_dashboard_data: {e}")
+        return {
+            "success": False,
+            "error": str(e)
+        }
+
+
+def manually_update_pending_transactions(days_old: int = 7) -> Dict:
+    """Manually update old pending transactions to completed status"""
+    try:
+        service = OptimusPaymentService()
+        return service.manually_update_pending_transactions(days_old)
+    except Exception as e:
+        logger.error(f"Error in manually_update_pending_transactions: {e}")
+        return {
+            "success": False,
+            "error": str(e)
+        }

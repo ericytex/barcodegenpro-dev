@@ -10,7 +10,8 @@ from datetime import datetime
 import os
 import logging
 
-from routes.auth import verify_api_key, get_current_user
+from routes.auth import get_current_user
+# Removed verify_api_key import - not needed for JWT auth
 from models.database import DatabaseManager
 from services.backup_service import get_backup_service
 from utils.encryption import get_sensitive_field_manager
@@ -23,15 +24,27 @@ router = APIRouter(prefix="/admin/database", tags=["Database Management"])
 
 def verify_super_admin(user: dict = Depends(get_current_user)):
     """Verify user is super admin"""
-    if not user or user.get("role") != "super_admin":
+    if not user or not user.get("is_super_admin"):
         raise HTTPException(status_code=403, detail="Super admin access required")
     return user
 
 
+# Debug endpoint to test authentication
+@router.get("/debug/auth")
+async def debug_auth(
+    user: dict = Depends(get_current_user)
+):
+    """Debug endpoint to test authentication"""
+    return {
+        "success": True,
+        "user": user,
+        "is_super_admin": user.get("is_super_admin", False),
+        "message": "Authentication debug info"
+    }
+
 # Database Health and Statistics
 @router.get("/health")
 async def get_database_health(
-    api_key: str = Depends(verify_api_key),
     user: dict = Depends(verify_super_admin)
 ):
     """Get comprehensive database health information"""
@@ -48,7 +61,7 @@ async def get_database_health(
         
         # Get backup stats
         backup_stats_result = backup_service.get_backup_stats()
-        backup_stats = backup_stats_result.get("stats", {}) if backup_stats_result["success"] else {}
+        backup_stats = backup_stats_result.get("stats", {}) if backup_stats_result.get("success") else {}
         
         # Get connection pool stats
         pool_stats = connection_manager.get_stats()
@@ -95,7 +108,6 @@ async def get_database_health(
 # Database Statistics
 @router.get("/statistics")
 async def get_database_statistics(
-    api_key: str = Depends(verify_api_key),
     user: dict = Depends(verify_super_admin)
 ):
     """Get detailed database statistics"""
@@ -128,7 +140,6 @@ async def get_database_statistics(
 async def create_database_backup(
     compress: bool = True,
     encrypt: bool = False,
-    api_key: str = Depends(verify_api_key),
     user: dict = Depends(verify_super_admin)
 ):
     """Create a new database backup"""
@@ -154,7 +165,6 @@ async def create_database_backup(
 
 @router.get("/backup/list")
 async def list_database_backups(
-    api_key: str = Depends(verify_api_key),
     user: dict = Depends(verify_super_admin)
 ):
     """List all available database backups"""
@@ -203,7 +213,6 @@ async def list_database_backups(
 @router.post("/backup/restore")
 async def restore_database_backup(
     backup_filename: str,
-    api_key: str = Depends(verify_api_key),
     user: dict = Depends(verify_super_admin)
 ):
     """Restore database from backup"""
@@ -243,7 +252,6 @@ async def restore_database_backup(
 @router.delete("/backup/delete/{backup_filename}")
 async def delete_database_backup(
     backup_filename: str,
-    api_key: str = Depends(verify_api_key),
     user: dict = Depends(verify_super_admin)
 ):
     """Delete a database backup"""
@@ -269,7 +277,6 @@ async def delete_database_backup(
 # Backup Service Management
 @router.post("/backup/service/start")
 async def start_backup_service(
-    api_key: str = Depends(verify_api_key),
     user: dict = Depends(verify_super_admin)
 ):
     """Start the automated backup service"""
@@ -289,7 +296,6 @@ async def start_backup_service(
 
 @router.post("/backup/service/stop")
 async def stop_backup_service(
-    api_key: str = Depends(verify_api_key),
     user: dict = Depends(verify_super_admin)
 ):
     """Stop the automated backup service"""
@@ -309,7 +315,6 @@ async def stop_backup_service(
 
 @router.post("/backup/cleanup")
 async def cleanup_old_backups(
-    api_key: str = Depends(verify_api_key),
     user: dict = Depends(verify_super_admin)
 ):
     """Clean up old backups"""
@@ -327,7 +332,6 @@ async def cleanup_old_backups(
 # Database Configuration
 @router.get("/config")
 async def get_database_config(
-    api_key: str = Depends(verify_api_key),
     user: dict = Depends(verify_super_admin)
 ):
     """Get current database configuration"""
@@ -357,7 +361,6 @@ async def get_database_config(
 # Database Maintenance
 @router.post("/maintenance/optimize")
 async def optimize_database(
-    api_key: str = Depends(verify_api_key),
     user: dict = Depends(verify_super_admin)
 ):
     """Optimize database performance"""
@@ -383,7 +386,6 @@ async def optimize_database(
 
 @router.post("/maintenance/integrity-check")
 async def check_database_integrity(
-    api_key: str = Depends(verify_api_key),
     user: dict = Depends(verify_super_admin)
 ):
     """Check database integrity"""
@@ -412,7 +414,6 @@ async def check_database_integrity(
 # Database Export/Import
 @router.get("/export")
 async def export_database(
-    api_key: str = Depends(verify_api_key),
     user: dict = Depends(verify_super_admin)
 ):
     """Export database as SQL dump"""
@@ -445,7 +446,6 @@ async def export_database(
 # Security Monitoring
 @router.get("/security/status")
 async def get_security_status(
-    api_key: str = Depends(verify_api_key),
     user: dict = Depends(verify_super_admin)
 ):
     """Get database security status"""

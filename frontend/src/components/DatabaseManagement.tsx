@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Label } from "@/components/ui/label";
 import { 
   Database, 
   HardDrive, 
@@ -123,12 +124,40 @@ export function DatabaseManagement() {
     try {
       setLoading(true);
       
-      // Fetch all data in parallel
+      // Get the correct API base URL
+      const apiConfig = apiService.getEnvironmentConfig();
+      const baseUrl = apiConfig.baseUrl.endsWith('/') ? apiConfig.baseUrl.slice(0, -1) : apiConfig.baseUrl;
+      
+      // Fetch all data in parallel using correct API URLs
       const [healthRes, statsRes, securityRes, backupsRes] = await Promise.all([
-        apiService.get('/admin/database/health'),
-        apiService.get('/admin/database/statistics'),
-        apiService.get('/admin/database/security/status'),
-        apiService.get('/admin/database/backup/list')
+        fetch(`${baseUrl}/admin/database/health`, {
+          headers: {
+            'Content-Type': 'application/json',
+            'X-API-Key': apiConfig.apiKey,
+            ...(localStorage.getItem('access_token') ? { 'Authorization': `Bearer ${localStorage.getItem('access_token')}` } : {})
+          }
+        }).then(res => res.json()),
+        fetch(`${baseUrl}/admin/database/statistics`, {
+          headers: {
+            'Content-Type': 'application/json',
+            'X-API-Key': apiConfig.apiKey,
+            ...(localStorage.getItem('access_token') ? { 'Authorization': `Bearer ${localStorage.getItem('access_token')}` } : {})
+          }
+        }).then(res => res.json()),
+        fetch(`${baseUrl}/admin/database/security/status`, {
+          headers: {
+            'Content-Type': 'application/json',
+            'X-API-Key': apiConfig.apiKey,
+            ...(localStorage.getItem('access_token') ? { 'Authorization': `Bearer ${localStorage.getItem('access_token')}` } : {})
+          }
+        }).then(res => res.json()),
+        fetch(`${baseUrl}/admin/database/backup/list`, {
+          headers: {
+            'Content-Type': 'application/json',
+            'X-API-Key': apiConfig.apiKey,
+            ...(localStorage.getItem('access_token') ? { 'Authorization': `Bearer ${localStorage.getItem('access_token')}` } : {})
+          }
+        }).then(res => res.json())
       ]);
 
       setHealth(healthRes);
@@ -152,13 +181,26 @@ export function DatabaseManagement() {
     try {
       setActionLoading(action);
       
-      const response = await apiService.post(endpoint, data);
+      const apiConfig = apiService.getEnvironmentConfig();
+      const baseUrl = apiConfig.baseUrl.endsWith('/') ? apiConfig.baseUrl.slice(0, -1) : apiConfig.baseUrl;
       
-      if (response.success) {
-        toast.success(response.message || 'Action completed successfully');
+      const response = await fetch(`${baseUrl}${endpoint}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-API-Key': apiConfig.apiKey,
+          ...(localStorage.getItem('access_token') ? { 'Authorization': `Bearer ${localStorage.getItem('access_token')}` } : {})
+        },
+        body: data ? JSON.stringify(data) : undefined
+      });
+      
+      const result = await response.json();
+      
+      if (result.success) {
+        toast.success(result.message || 'Action completed successfully');
         await fetchData(); // Refresh data
       } else {
-        toast.error(response.message || 'Action failed');
+        toast.error(result.message || 'Action failed');
       }
     } catch (error) {
       console.error(`Failed to ${action}:`, error);
@@ -172,27 +214,63 @@ export function DatabaseManagement() {
     try {
       setActionLoading(action);
       
+      const apiConfig = apiService.getEnvironmentConfig();
+      const baseUrl = apiConfig.baseUrl.endsWith('/') ? apiConfig.baseUrl.slice(0, -1) : apiConfig.baseUrl;
+      
       let response;
       if (action === 'create') {
-        response = await apiService.post('/admin/database/backup/create', {
-          compress: true,
-          encrypt: false
+        response = await fetch(`${baseUrl}/admin/database/backup/create`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-API-Key': apiConfig.apiKey,
+            ...(localStorage.getItem('access_token') ? { 'Authorization': `Bearer ${localStorage.getItem('access_token')}` } : {})
+          },
+          body: JSON.stringify({
+            compress: true,
+            encrypt: false
+          })
         });
       } else if (action === 'restore' && filename) {
-        response = await apiService.post('/admin/database/backup/restore', {
-          backup_filename: filename
+        response = await fetch(`${baseUrl}/admin/database/backup/restore`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-API-Key': apiConfig.apiKey,
+            ...(localStorage.getItem('access_token') ? { 'Authorization': `Bearer ${localStorage.getItem('access_token')}` } : {})
+          },
+          body: JSON.stringify({
+            backup_filename: filename
+          })
         });
       } else if (action === 'delete' && filename) {
-        response = await apiService.delete(`/admin/database/backup/delete/${filename}`);
+        response = await fetch(`${baseUrl}/admin/database/backup/delete/${filename}`, {
+          method: 'DELETE',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-API-Key': apiConfig.apiKey,
+            ...(localStorage.getItem('access_token') ? { 'Authorization': `Bearer ${localStorage.getItem('access_token')}` } : {})
+          }
+        });
       } else if (action === 'cleanup') {
-        response = await apiService.post('/admin/database/backup/cleanup');
+        response = await fetch(`${baseUrl}/admin/database/backup/cleanup`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-API-Key': apiConfig.apiKey,
+            ...(localStorage.getItem('access_token') ? { 'Authorization': `Bearer ${localStorage.getItem('access_token')}` } : {})
+          }
+        });
       }
       
-      if (response?.success) {
-        toast.success(response.message || 'Backup action completed');
-        await fetchData();
-      } else {
-        toast.error(response?.message || 'Backup action failed');
+      if (response) {
+        const result = await response.json();
+        if (result?.success) {
+          toast.success(result.message || 'Backup action completed');
+          await fetchData();
+        } else {
+          toast.error(result?.message || 'Backup action failed');
+        }
       }
     } catch (error) {
       console.error(`Backup ${action} failed:`, error);
@@ -206,13 +284,25 @@ export function DatabaseManagement() {
     try {
       setActionLoading(`service-${action}`);
       
-      const response = await apiService.post(`/admin/database/backup/service/${action}`);
+      const apiConfig = apiService.getEnvironmentConfig();
+      const baseUrl = apiConfig.baseUrl.endsWith('/') ? apiConfig.baseUrl.slice(0, -1) : apiConfig.baseUrl;
       
-      if (response.success) {
-        toast.success(response.message || `Backup service ${action}ed successfully`);
+      const response = await fetch(`${baseUrl}/admin/database/backup/service/${action}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-API-Key': apiConfig.apiKey,
+          ...(localStorage.getItem('access_token') ? { 'Authorization': `Bearer ${localStorage.getItem('access_token')}` } : {})
+        }
+      });
+      
+      const result = await response.json();
+      
+      if (result.success) {
+        toast.success(result.message || `Backup service ${action}ed successfully`);
         await fetchData();
       } else {
-        toast.error(response.message || `Failed to ${action} backup service`);
+        toast.error(result.message || `Failed to ${action} backup service`);
       }
     } catch (error) {
       console.error(`Service ${action} failed:`, error);
@@ -262,10 +352,10 @@ export function DatabaseManagement() {
                 <span className="text-sm font-medium">Database Size</span>
               </div>
               <div className="text-2xl font-bold">
-                {health?.database.size_mb.toFixed(2)} MB
+                {health?.database?.size_mb?.toFixed(2) || 'N/A'} MB
               </div>
               <div className="text-xs text-muted-foreground">
-                {health?.database.size_bytes.toLocaleString()} bytes
+                {health?.database?.size_bytes?.toLocaleString() || 'N/A'} bytes
               </div>
             </div>
 
@@ -275,10 +365,10 @@ export function DatabaseManagement() {
                 <span className="text-sm font-medium">Total Records</span>
               </div>
               <div className="text-2xl font-bold">
-                {stats?.statistics.total_records.toLocaleString()}
+                {stats?.stats?.total_records?.toLocaleString() || 'N/A'}
               </div>
               <div className="text-xs text-muted-foreground">
-                {stats?.statistics.total_tables} tables
+                {stats?.stats?.total_tables || 'N/A'} tables
               </div>
             </div>
 
@@ -288,10 +378,10 @@ export function DatabaseManagement() {
                 <span className="text-sm font-medium">Active Connections</span>
               </div>
               <div className="text-2xl font-bold">
-                {health?.connection_pool.active_connections}
+                {health?.connection_pool?.active_connections ?? 0}
               </div>
               <div className="text-xs text-muted-foreground">
-                {health?.connection_pool.max_connections} max
+                {health?.connection_pool?.max_connections ?? 10} max
               </div>
             </div>
 
@@ -346,18 +436,18 @@ export function DatabaseManagement() {
                   </div>
                   <div className="flex justify-between">
                     <span className="text-sm">Path</span>
-                    <span className="text-sm font-mono">{health?.database.path}</span>
+                    <span className="text-sm font-mono">{health?.database?.path || 'N/A'}</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-sm">Permissions</span>
-                    <Badge variant={security?.security_status.file_permissions.secure ? 'default' : 'secondary'}>
-                      {health?.database.permissions}
+                    <Badge variant={security?.security_status?.file_permissions?.secure ? 'default' : 'secondary'}>
+                      {health?.database?.permissions || 'N/A'}
                     </Badge>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-sm">Last Backup</span>
                     <span className="text-sm">
-                      {health?.database.last_backup || 'Never'}
+                      {health?.database?.last_backup || 'Never'}
                     </span>
                   </div>
                 </div>
@@ -377,19 +467,19 @@ export function DatabaseManagement() {
                   <div className="flex justify-between">
                     <span className="text-sm">Active Connections</span>
                     <span className="text-sm font-bold">
-                      {health?.connection_pool.active_connections}
+                      {health?.connection_pool?.active_connections ?? 0}
                     </span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-sm">Available</span>
                     <span className="text-sm">
-                      {health?.connection_pool.available_connections}
+                      {health?.connection_pool?.available_connections ?? 10}
                     </span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-sm">Pool Size</span>
                     <span className="text-sm">
-                      {health?.connection_pool.pool_size}
+                      {health?.connection_pool?.pool_size ?? 10}
                     </span>
                   </div>
                 </div>
@@ -397,11 +487,11 @@ export function DatabaseManagement() {
                   <div className="flex justify-between text-sm">
                     <span>Pool Usage</span>
                     <span>
-                      {Math.round((health?.connection_pool.active_connections || 0) / (health?.connection_pool.max_connections || 1) * 100)}%
+                      {Math.round((health?.connection_pool?.active_connections ?? 0) / (health?.connection_pool?.max_connections ?? 10) * 100)}%
                     </span>
                   </div>
                   <Progress 
-                    value={(health?.connection_pool.active_connections || 0) / (health?.connection_pool.max_connections || 1) * 100} 
+                    value={(health?.connection_pool?.active_connections ?? 0) / (health?.connection_pool?.max_connections ?? 10) * 100} 
                     className="h-2"
                   />
                 </div>
@@ -426,27 +516,27 @@ export function DatabaseManagement() {
                   <div className="flex justify-between">
                     <span className="text-sm">Status</span>
                     <div className="flex items-center gap-2">
-                      {health?.backup_service.running ? (
+                      {health?.backup_service?.running ? (
                         <Play className="w-4 h-4 text-green-500" />
                       ) : (
                         <Pause className="w-4 h-4 text-gray-500" />
                       )}
-                      <Badge variant={health?.backup_service.running ? 'default' : 'secondary'}>
-                        {health?.backup_service.running ? 'Running' : 'Stopped'}
+                      <Badge variant={health?.backup_service?.running ? 'default' : 'secondary'}>
+                        {health?.backup_service?.running ? 'Running' : 'Stopped'}
                       </Badge>
                     </div>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-sm">Interval</span>
-                    <span className="text-sm">{health?.backup_service.interval_hours}h</span>
+                    <span className="text-sm">{health?.backup_service?.interval_hours || 'N/A'}h</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-sm">Retention</span>
-                    <span className="text-sm">{health?.backup_service.retention_days} days</span>
+                    <span className="text-sm">{health?.backup_service?.retention_days || 'N/A'} days</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-sm">Total Backups</span>
-                    <span className="text-sm">{health?.backup_service.total_backups}</span>
+                    <span className="text-sm">{health?.backup_service?.total_backups || 'N/A'}</span>
                   </div>
                 </div>
                 
@@ -455,7 +545,7 @@ export function DatabaseManagement() {
                     size="sm"
                     variant="outline"
                     onClick={() => handleServiceAction('start')}
-                    disabled={actionLoading === 'service-start' || health?.backup_service.running}
+                    disabled={actionLoading === 'service-start' || health?.backup_service?.running}
                   >
                     <Play className="w-4 h-4 mr-2" />
                     Start
@@ -464,7 +554,7 @@ export function DatabaseManagement() {
                     size="sm"
                     variant="outline"
                     onClick={() => handleServiceAction('stop')}
-                    disabled={actionLoading === 'service-stop' || !health?.backup_service.running}
+                    disabled={actionLoading === 'service-stop' || !health?.backup_service?.running}
                   >
                     <Pause className="w-4 h-4 mr-2" />
                     Stop
@@ -574,26 +664,26 @@ export function DatabaseManagement() {
                 <div className="space-y-2">
                   <div className="flex justify-between">
                     <span className="text-sm">Current</span>
-                    <Badge variant={security?.security_status.file_permissions.secure ? 'default' : 'secondary'}>
-                      {security?.security_status.file_permissions.current}
+                    <Badge variant={security?.security_status?.file_permissions?.secure ? 'default' : 'secondary'}>
+                      {security?.security_status?.file_permissions?.current || 'N/A'}
                     </Badge>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-sm">Recommended</span>
                     <span className="text-sm font-mono">
-                      {security?.security_status.file_permissions.recommended}
+                      {security?.security_status?.file_permissions?.recommended || 'N/A'}
                     </span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-sm">Status</span>
                     <div className="flex items-center gap-2">
-                      {security?.security_status.file_permissions.secure ? (
+                      {security?.security_status?.file_permissions?.secure ? (
                         <CheckCircle className="w-4 h-4 text-green-500" />
                       ) : (
                         <AlertTriangle className="w-4 h-4 text-yellow-500" />
                       )}
-                      <Badge variant={security?.security_status.file_permissions.secure ? 'default' : 'secondary'}>
-                        {security?.security_status.file_permissions.secure ? 'Secure' : 'Needs Fix'}
+                      <Badge variant={security?.security_status?.file_permissions?.secure ? 'default' : 'secondary'}>
+                        {security?.security_status?.file_permissions?.secure ? 'Secure' : 'Needs Fix'}
                       </Badge>
                     </div>
                   </div>
@@ -614,20 +704,20 @@ export function DatabaseManagement() {
                   <div className="flex justify-between">
                     <span className="text-sm">Field Encryption</span>
                     <div className="flex items-center gap-2">
-                      {security?.security_status.encryption.enabled ? (
+                      {security?.security_status?.encryption?.enabled ? (
                         <Lock className="w-4 h-4 text-green-500" />
                       ) : (
                         <Unlock className="w-4 h-4 text-red-500" />
                       )}
-                      <Badge variant={security?.security_status.encryption.enabled ? 'default' : 'destructive'}>
-                        {security?.security_status.encryption.enabled ? 'Enabled' : 'Disabled'}
+                      <Badge variant={security?.security_status?.encryption?.enabled ? 'default' : 'destructive'}>
+                        {security?.security_status?.encryption?.enabled ? 'Enabled' : 'Disabled'}
                       </Badge>
                     </div>
                   </div>
                   <div className="space-y-1">
                     <span className="text-sm font-medium">Encrypted Tables:</span>
                     <div className="flex flex-wrap gap-1">
-                      {security?.security_status.encryption.encrypted_tables.map((table, index) => (
+                      {security?.security_status?.encryption?.encrypted_tables?.map((table, index) => (
                         <Badge key={index} variant="outline" className="text-xs">
                           {table}
                         </Badge>
@@ -720,25 +810,25 @@ export function DatabaseManagement() {
                   <div className="space-y-2">
                     <Label>Backup Interval (hours)</Label>
                     <div className="text-sm text-muted-foreground">
-                      Current: {health?.backup_service.interval_hours}h
+                      Current: {health?.backup_service?.interval_hours || 'N/A'}h
                     </div>
                   </div>
                   <div className="space-y-2">
                     <Label>Retention Period (days)</Label>
                     <div className="text-sm text-muted-foreground">
-                      Current: {health?.backup_service.retention_days} days
+                      Current: {health?.backup_service?.retention_days || 'N/A'} days
                     </div>
                   </div>
                   <div className="space-y-2">
                     <Label>Max Connections</Label>
                     <div className="text-sm text-muted-foreground">
-                      Current: {health?.connection_pool.max_connections}
+                      Current: {health?.connection_pool?.max_connections || 'N/A'}
                     </div>
                   </div>
                   <div className="space-y-2">
                     <Label>Database Path</Label>
                     <div className="text-sm font-mono text-muted-foreground">
-                      {health?.database.path}
+                      {health?.database?.path || 'N/A'}
                     </div>
                   </div>
                 </div>

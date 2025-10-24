@@ -11,6 +11,8 @@ import { apiService } from "@/lib/api";
 import { DeviceManagement } from "@/components/DeviceManagement";
 import { SimpleDeviceManagement } from "@/components/SimpleDeviceManagement";
 import { DatabaseManagement } from "@/components/DatabaseManagement";
+import { useMenuSettings } from "@/contexts/MenuContext";
+import { useAuth } from "@/contexts/AuthContext";
 
 interface PaymentProvider {
   id: string;

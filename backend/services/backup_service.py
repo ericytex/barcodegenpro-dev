@@ -108,38 +108,35 @@ class BackupService:
     def get_backup_stats(self) -> Dict[str, Any]:
         """Get backup statistics"""
         try:
-            script_path = os.path.join(os.path.dirname(__file__), "auto_backup.py")
-            cmd = ["python3", script_path, "--db-path", self.db_path, "--backup-dir", self.backup_dir, "--stats"]
+            # Use the BackupManager directly instead of calling the script
+            from scripts.auto_backup import DatabaseBackupManager
+            backup_manager = DatabaseBackupManager(self.db_path, self.backup_dir, self.retention_days)
+            raw_stats = backup_manager.get_backup_stats()
             
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+            # Transform the data to match frontend expectations
+            stats = {
+                "total_backups": raw_stats.get("total_backups", 0),
+                "total_size_mb": round(raw_stats.get("total_size", 0) / (1024 * 1024), 2),
+                "latest_backup": raw_stats.get("latest_backup"),
+                "latest_backup_date": raw_stats.get("latest_backup_date")
+            }
             
-            if result.returncode == 0:
-                # Parse stats from output
-                stats = {
+            return {
+                "success": True,
+                "stats": stats
+            }
+        except Exception as e:
+            logger.error(f"Failed to get backup stats: {e}")
+            return {
+                "success": False,
+                "message": str(e),
+                "stats": {
                     "total_backups": 0,
                     "total_size_mb": 0,
                     "latest_backup": None,
                     "latest_backup_date": None
                 }
-                
-                for line in result.stdout.split('\n'):
-                    if "Total backups:" in line:
-                        stats["total_backups"] = int(line.split(":")[-1].strip())
-                    elif "Total size:" in line:
-                        size_str = line.split(":")[-1].strip().replace(" MB", "")
-                        stats["total_size_mb"] = float(size_str)
-                    elif "Latest backup:" in line:
-                        stats["latest_backup"] = line.split(":")[-1].strip()
-                    elif "Latest backup date:" in line:
-                        stats["latest_backup_date"] = line.split(":")[-1].strip()
-                
-                return {"success": True, "stats": stats}
-            else:
-                return {"success": False, "message": f"Failed to get stats: {result.stderr}"}
-                
-        except Exception as e:
-            logger.error(f"Failed to get backup stats: {e}")
-            return {"success": False, "message": str(e)}
+            }
     
     def start_auto_backup(self):
         """Start automatic backup service"""

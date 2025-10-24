@@ -53,6 +53,7 @@ interface TokenPurchase {
   completed_at?: string;
   username?: string;
   email?: string;
+  is_test_data?: boolean;
 }
 
 interface TokenPurchasesData {
@@ -83,6 +84,8 @@ const PaymentsDashboard: React.FC = () => {
   const [metrics, setMetrics] = useState<PaymentMetrics | null>(null);
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+  const [syncResults, setSyncResults] = useState<any>(null);
   
   // Filters
   const [limit, setLimit] = useState(50);
@@ -180,16 +183,57 @@ const PaymentsDashboard: React.FC = () => {
     }
   };
 
-  const getStatusIcon = (status: string) => {
-    switch (status) {
-      case 'completed':
-        return <CheckCircle className="h-4 w-4 text-green-500" />;
-      case 'pending':
-        return <Clock className="h-4 w-4 text-yellow-500" />;
-      case 'failed':
-        return <XCircle className="h-4 w-4 text-red-500" />;
-      default:
-        return <AlertCircle className="h-4 w-4 text-gray-500" />;
+  const syncWithOptimus = async () => {
+    setSyncing(true);
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/payments/sync-with-optimus?limit=${limit}`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('access_token')}`
+        }
+      });
+      
+      const data = await response.json();
+      
+      if (data.success) {
+        setSyncResults(data);
+        toast.success(`Synced ${data.sync_summary.status_changes} transactions with Optimus`);
+        // Refresh the data to show updated statuses
+        await loadTokenPurchases();
+      } else {
+        toast.error(data.message || 'Failed to sync with Optimus');
+      }
+    } catch (error) {
+      console.error('Error syncing with Optimus:', error);
+      toast.error('Failed to sync with Optimus');
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  const getStatusIcon = (status: string, isTestData: boolean = false) => {
+    if (isTestData) {
+      switch (status) {
+        case 'completed':
+          return <CheckCircle className="h-4 w-4 text-blue-500" />;
+        case 'pending':
+          return <Clock className="h-4 w-4 text-blue-500" />;
+        case 'failed':
+          return <XCircle className="h-4 w-4 text-blue-500" />;
+        default:
+          return <AlertCircle className="h-4 w-4 text-blue-500" />;
+      }
+    } else {
+      switch (status) {
+        case 'completed':
+          return <CheckCircle className="h-4 w-4 text-green-500" />;
+        case 'pending':
+          return <Clock className="h-4 w-4 text-yellow-500" />;
+        case 'failed':
+          return <XCircle className="h-4 w-4 text-red-500" />;
+        default:
+          return <AlertCircle className="h-4 w-4 text-gray-500" />;
+      }
     }
   };
 
@@ -214,6 +258,15 @@ const PaymentsDashboard: React.FC = () => {
         </div>
         <div className="flex items-center gap-2">
           <Button
+            onClick={syncWithOptimus}
+            disabled={syncing}
+            variant="outline"
+            size="sm"
+          >
+            <Zap className={`h-4 w-4 mr-2 ${syncing ? 'animate-spin' : ''}`} />
+            Sync with Optimus
+          </Button>
+          <Button
             onClick={refreshPurchases}
             disabled={refreshing}
             variant="outline"
@@ -227,6 +280,83 @@ const PaymentsDashboard: React.FC = () => {
           </Button>
         </div>
       </div>
+
+      {/* Sync Results */}
+      {syncResults && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Zap className="h-5 w-5" />
+              Optimus Sync Results
+            </CardTitle>
+            <CardDescription>
+              Last sync: {new Date(syncResults.timestamp).toLocaleString()}
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+              <div className="flex items-center">
+                <Activity className="h-8 w-8 text-blue-600" />
+                <div className="ml-4">
+                  <p className="text-sm font-medium text-muted-foreground">Total Processed</p>
+                  <p className="text-2xl font-bold">{syncResults.sync_summary.total_processed}</p>
+                </div>
+              </div>
+              
+              <div className="flex items-center">
+                <CheckCircle className="h-8 w-8 text-green-600" />
+                <div className="ml-4">
+                  <p className="text-sm font-medium text-muted-foreground">Successful Syncs</p>
+                  <p className="text-2xl font-bold">{syncResults.sync_summary.successful_syncs}</p>
+                </div>
+              </div>
+              
+              <div className="flex items-center">
+                <Target className="h-8 w-8 text-orange-600" />
+                <div className="ml-4">
+                  <p className="text-sm font-medium text-muted-foreground">Status Changes</p>
+                  <p className="text-2xl font-bold">{syncResults.sync_summary.status_changes}</p>
+                </div>
+              </div>
+              
+              <div className="flex items-center">
+                <XCircle className="h-8 w-8 text-red-600" />
+                <div className="ml-4">
+                  <p className="text-sm font-medium text-muted-foreground">Failed Syncs</p>
+                  <p className="text-2xl font-bold">{syncResults.sync_summary.failed_syncs}</p>
+                </div>
+              </div>
+            </div>
+            
+            {/* Status Changes Details */}
+            {syncResults.sync_summary.status_changes > 0 && (
+              <div className="mt-6">
+                <h4 className="text-lg font-semibold mb-3">Status Changes</h4>
+                <div className="space-y-2 max-h-60 overflow-y-auto">
+                  {syncResults.sync_summary.results
+                    .filter((result: any) => result.status_changed)
+                    .map((result: any, index: number) => (
+                    <div key={index} className="flex items-center justify-between p-3 border rounded-lg">
+                      <div className="flex items-center gap-3">
+                        <Badge variant="outline">{result.table}</Badge>
+                        <span className="font-mono text-sm">
+                          {result.transaction_uid?.slice(0, 8)}...
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <Badge variant="secondary">{result.previous_status}</Badge>
+                        <span>→</span>
+                        <Badge variant="default">{result.current_status}</Badge>
+                        <Badge variant="outline">{result.optimus_status}</Badge>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       {/* Key Metrics Cards */}
       {metrics && (
@@ -390,13 +520,27 @@ const PaymentsDashboard: React.FC = () => {
                       </tr>
                     </thead>
                     <tbody>
-                      {purchases.purchases.slice(0, 20).map((purchase) => (
-                        <tr key={purchase.id} className="border-b hover:bg-muted/50">
-                          <td className="p-2">
-                            <div className="font-mono text-sm">
-                              {purchase.transaction_uid.slice(0, 8)}...
-                            </div>
-                          </td>
+                      {purchases.purchases.slice(0, 20).map((purchase) => {
+                        // Determine row color based on test data status
+                        const isTestData = purchase.is_test_data || false;
+                        const rowClass = isTestData 
+                          ? "border-b hover:bg-blue-50 bg-blue-25" 
+                          : purchase.status === 'completed' 
+                            ? "border-b hover:bg-green-50 bg-green-25" 
+                            : "border-b hover:bg-muted/50";
+                        
+                        return (
+                          <tr key={purchase.id} className={rowClass}>
+                            <td className="p-2">
+                              <div className="font-mono text-sm">
+                                {purchase.transaction_uid.slice(0, 8)}...
+                                {isTestData && (
+                                  <Badge variant="outline" className="ml-2 text-xs bg-blue-100 text-blue-700">
+                                    TEST
+                                  </Badge>
+                                )}
+                              </div>
+                            </td>
                           <td className="p-2">
                             <div className="text-sm">
                               <div className="font-medium">{purchase.username || 'Unknown'}</div>
@@ -411,11 +555,21 @@ const PaymentsDashboard: React.FC = () => {
                           </td>
                           <td className="p-2">
                             <div className="flex items-center gap-2">
-                              {getStatusIcon(purchase.status)}
+                              {getStatusIcon(purchase.status, isTestData)}
                               <Badge variant={
-                                purchase.status === 'completed' ? 'default' :
-                                purchase.status === 'pending' ? 'secondary' :
-                                purchase.status === 'failed' ? 'destructive' : 'outline'
+                                isTestData 
+                                  ? "outline" 
+                                  : purchase.status === 'completed' 
+                                    ? "default" 
+                                    : purchase.status === 'pending' 
+                                      ? "secondary" 
+                                      : "destructive"
+                              } className={
+                                isTestData 
+                                  ? "bg-blue-100 text-blue-700 border-blue-300" 
+                                  : purchase.status === 'completed' 
+                                    ? "bg-green-100 text-green-700 border-green-300" 
+                                    : ""
                               }>
                                 {purchase.status}
                               </Badge>
@@ -433,7 +587,8 @@ const PaymentsDashboard: React.FC = () => {
                             {formatDate(purchase.created_at)}
                           </td>
                         </tr>
-                      ))}
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>
