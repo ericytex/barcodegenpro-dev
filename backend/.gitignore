@@ -1,0 +1,75 @@
+######################
+# 1. Dependency / Build Files
+######################
+
+# Python Virtual Environments
+.venv/
+venv/
+env/
+
+# Python compiled files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# JavaScript/Node.js dependencies
+node_modules/
+npm-debug.log
+yarn-error.log
+package-lock.json # Only include package-lock.json if you want exact dependency lock. If you rely purely on package.json, you might ignore this.
+
+# Compiled/Distribution
+dist/
+build/
+*.egg-info/
+.coverage
+
+######################
+# 2. Operating System Files
+######################
+
+# macOS
+.DS_Store
+.Trashes
+ehthumbs.db
+
+# Windows
+Thumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+######################
+# 3. IDE and Editor Files
+######################
+
+# VS Code
+.vscode/
+
+# JetBrains (PyCharm, IntelliJ, etc.)
+.idea/
+*.iml
+
+# Sublime Text
+*.sublime-project
+*.sublime-workspace
+
+######################
+# 4. Sensitive/Local Configuration
+######################
+
+# Environment/Configuration files (Keep this if you use .env for secrets)
+.env
+*.pem
+*.key
+
+# Log/Temporary files
+*.log
+*.tmp
+temp/
+
+######################
+# 5. Backup or Artifact Files
+######################
+
+*.bak
+*.swp

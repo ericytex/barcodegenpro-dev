@@ -1,0 +1,19 @@
+[Unit]
+Description=Barcode Generator API
+After=network.target
+
+[Service]
+Type=simple
+User=barcode
+WorkingDirectory=/home/barcode/app/backend
+Environment="PATH=/home/barcode/app/backend/venv/bin"
+ExecStart=/home/barcode/app/backend/venv/bin/uvicorn app:app --host 127.0.0.1 --port 8034 --workers 2
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
+
+

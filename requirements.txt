@@ -1,0 +1,24 @@
+# Barcode Generator Requirements
+# Core dependencies for barcode and QR code generation
+
+# Data manipulation and CSV/Excel handling
+pandas>=1.5.0
+openpyxl>=3.0.0
+
+# Image processing and manipulation
+Pillow>=9.0.0
+
+# QR code generation
+qrcode[pil]>=7.4.2
+
+# Barcode generation (Code128, etc.)
+python-barcode>=0.14.0
+
+# Optional: Enhanced image processing (if needed)
+# opencv-python>=4.8.0
+
+# Optional: For better font handling
+# fonttools>=4.38.0
+
+# PDF generation for combining labels into PDF
+reportlab>=4.0.0
