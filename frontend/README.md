@@ -1,73 +1,146 @@
-# Welcome to your Lovable project
+# BarcodeGen Pro Frontend
 
-## Project info
+A modern React TypeScript frontend for the BarcodeGen Pro barcode generation system.
 
-**URL**: https://lovable.dev/projects/546de8e4-c9c1-4b1a-bd22-fe5f432fc94c
+## 🚀 Quick Start
 
-## How can I edit this code?
+### Prerequisites
+- Node.js 18+ 
+- npm or yarn
 
-There are several ways of editing your application.
+### Installation
+```bash
+npm install
+```
 
-**Use Lovable**
-
-Simply visit the [Lovable Project](https://lovable.dev/projects/546de8e4-c9c1-4b1a-bd22-fe5f432fc94c) and start prompting.
-
-Changes made via Lovable will be committed automatically to this repo.
-
-**Use your preferred IDE**
-
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
-
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
-
-Follow these steps:
-
-```sh
-# Step 1: Clone the repository using the project's Git URL.
-git clone <YOUR_GIT_URL>
-
-# Step 2: Navigate to the project directory.
-cd <YOUR_PROJECT_NAME>
-
-# Step 3: Install the necessary dependencies.
-npm i
-
-# Step 4: Start the development server with auto-reloading and an instant preview.
+### Development
+```bash
 npm run dev
 ```
 
-**Edit a file directly in GitHub**
+### Production Build
+```bash
+npm run build
+```
 
-- Navigate to the desired file(s).
-- Click the "Edit" button (pencil icon) at the top right of the file view.
-- Make your changes and commit the changes.
+### Preview Production Build
+```bash
+npm run preview
+```
 
-**Use GitHub Codespaces**
+## 🛠️ Tech Stack
 
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
+- **React 18** - Modern React with hooks
+- **TypeScript** - Type-safe development
+- **Vite** - Fast build tool and dev server
+- **Tailwind CSS** - Utility-first CSS framework
+- **shadcn/ui** - Modern UI component library
+- **React Router** - Client-side routing
+- **React Query** - Data fetching and caching
+- **React Hook Form** - Form handling
+- **Zod** - Schema validation
 
-## What technologies are used for this project?
+## 📁 Project Structure
 
-This project is built with:
+```
+src/
+├── components/          # Reusable UI components
+│   ├── ui/             # shadcn/ui components
+│   └── ...             # Custom components
+├── pages/              # Page components
+├── contexts/           # React contexts
+├── hooks/              # Custom hooks
+├── utils/              # Utility functions
+├── lib/                # External library configurations
+└── styles/             # Global styles
+```
 
-- Vite
-- TypeScript
-- React
-- shadcn-ui
-- Tailwind CSS
+## 🎨 Key Features
 
-## How can I deploy this project?
+- **Barcode Generation** - Generate various barcode types
+- **Device Management** - Manage device types and models
+- **Excel Integration** - Upload and process Excel files
+- **Template System** - Customizable barcode templates
+- **User Authentication** - Secure login/logout
+- **Payment Integration** - Token-based payment system
+- **Responsive Design** - Mobile-first responsive UI
 
-Simply open [Lovable](https://lovable.dev/projects/546de8e4-c9c1-4b1a-bd22-fe5f432fc94c) and click on Share -> Publish.
+## 🔧 Configuration
 
-## Can I connect a custom domain to my Lovable project?
+### Environment Variables
 
-Yes, you can!
+Create `.env` file:
+```env
+VITE_API_BASE_URL=http://localhost:8034
+VITE_ENVIRONMENT=development
+```
 
-To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
+### API Integration
 
-Read more here: [Setting up a custom domain](https://docs.lovable.dev/tips-tricks/custom-domain#step-by-step-guide)
+The frontend communicates with the backend API through:
+- **Base URL**: Configured via `VITE_API_BASE_URL`
+- **Authentication**: API key-based authentication
+- **CORS**: Configured for development and production
+
+## 🧪 Development
+
+### Available Scripts
+
+- `npm run dev` - Start development server
+- `npm run build` - Build for production
+- `npm run preview` - Preview production build
+- `npm run lint` - Run ESLint
+- `npm run type-check` - Run TypeScript compiler
+
+### Code Quality
+
+- **ESLint** - Code linting
+- **TypeScript** - Type checking
+- **Prettier** - Code formatting (via ESLint)
+
+## 🚀 Deployment
+
+### Docker Deployment
+The frontend is containerized and deployed via Docker:
+
+```bash
+# Build Docker image
+docker build -t barcode-frontend .
+
+# Run container
+docker run -p 80:80 barcode-frontend
+```
+
+### Production Build
+```bash
+npm run build
+```
+
+The built files will be in the `dist/` directory, ready for deployment.
+
+## 🔗 Integration
+
+This frontend is part of the BarcodeGen Pro monorepo and integrates with:
+
+- **Backend API** (`/backend`) - FastAPI Python backend
+- **Deployment** (`/deploy`) - Docker deployment scripts
+- **Documentation** (`/docs`) - Project documentation
+
+## 📚 Documentation
+
+- [Main Project README](../README.md)
+- [Backend Documentation](../backend/README.md)
+- [Deployment Guide](../deploy/README.md)
+- [API Documentation](../docs/)
+
+## 🤝 Contributing
+
+1. Follow the existing code style
+2. Use TypeScript for all new code
+3. Add proper error handling
+4. Write meaningful commit messages
+5. Test your changes thoroughly
+
+## 📄 License
+
+This project is proprietary software. All rights reserved.
