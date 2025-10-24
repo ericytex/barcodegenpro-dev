@@ -10,9 +10,7 @@ import { useState, useEffect } from "react";
 import { apiService } from "@/lib/api";
 import { DeviceManagement } from "@/components/DeviceManagement";
 import { SimpleDeviceManagement } from "@/components/SimpleDeviceManagement";
-import { UserManager } from "@/components/UserManager";
-import { useMenuSettings } from "@/contexts/MenuContext";
-import { useAuth } from "@/contexts/AuthContext";
+import { DatabaseManagement } from "@/components/DatabaseManagement";
 
 interface PaymentProvider {
   id: string;
@@ -776,6 +774,25 @@ export default function SettingsPage() {
             </CardHeader>
             <CardContent>
               <UserManager isSuperAdmin={user.is_super_admin} />
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Database Management - Super Admin Only */}
+        {user?.is_super_admin && (
+          <Card className="shadow-elegant border-l-4 border-l-blue-500">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Database className="w-5 h-5 text-blue-600" />
+                Database Management
+                <Badge variant="outline" className="ml-auto">Super Admin Only</Badge>
+              </CardTitle>
+              <CardDescription>
+                Manage database operations, backups, security, and monitoring
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <DatabaseManagement />
             </CardContent>
           </Card>
         )}

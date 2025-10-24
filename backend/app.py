@@ -50,8 +50,7 @@ from routes.payments import router as payments_router
 from routes.auth import router as auth_router, get_current_user
 from routes.tokens import router as tokens_router
 from routes.collections import router as collections_router
-from routes.admin import router as admin_router
-from services.backup_service import initialize_backup_service, get_backup_service
+from routes.database_management import router as database_management_router
 
 # Initialize FastAPI app
 app = FastAPI(
@@ -119,6 +118,9 @@ app.include_router(collections_router)
 
 # Include admin routes
 app.include_router(admin_router)
+
+# Include database management routes (super admin only)
+app.include_router(database_management_router)
 
 # Include banner routes
 from routes.banners import router as banners_router
