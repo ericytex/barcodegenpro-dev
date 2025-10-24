@@ -51,7 +51,7 @@ from routes.auth import router as auth_router, get_current_user
 from routes.tokens import router as tokens_router
 from routes.collections import router as collections_router
 from routes.admin import router as admin_router
-from services.token_service import TokenService
+from services.backup_service import initialize_backup_service, get_backup_service
 
 # Initialize FastAPI app
 app = FastAPI(
@@ -97,6 +97,13 @@ samsung_galaxy_service = SamsungGalaxyService()
 template_manager = TemplateManager()
 subscription_service = SubscriptionService()
 token_service = TokenService()
+
+# Initialize backup service
+backup_service = initialize_backup_service(
+    db_path=db_manager.db_path,
+    backup_dir=db_manager.backup_dir,
+    retention_days=db_manager.backup_retention_days
+)
 
 # Include payment routes
 app.include_router(payments_router)
@@ -161,6 +168,63 @@ async def health_check(
         version="1.0.0",
         uptime="running"
     )
+
+# Database health monitoring endpoint
+@app.get("/database/health")
+async def database_health_check(
+    api_key: str = Depends(verify_api_key),
+    client_ip: str = Depends(check_rate_limit)
+):
+    """Database health monitoring endpoint"""
+    try:
+        # Get database info
+        db_info = db_manager.get_database_info()
+        
+        # Get backup service status
+        backup_status = backup_service.get_service_status()
+        
+        # Get backup stats
+        backup_stats_result = backup_service.get_backup_stats()
+        backup_stats = backup_stats_result.get("stats", {}) if backup_stats_result["success"] else {}
+        
+        # Get connection pool stats
+        from models.database_connection import get_connection_manager
+        connection_manager = get_connection_manager()
+        pool_stats = connection_manager.get_stats()
+        
+        return {
+            "status": "healthy",
+            "database": {
+                "path": db_info["database_path"],
+                "exists": db_info["database_exists"],
+                "size_bytes": db_info["database_size"],
+                "size_mb": round(db_info["database_size"] / (1024 * 1024), 2),
+                "permissions": db_info["database_permissions"],
+                "backup_enabled": db_info["backup_enabled"],
+                "backup_dir": db_info["backup_dir"],
+                "last_backup": db_info["last_backup"]
+            },
+            "backup_service": {
+                "enabled": backup_status["enabled"],
+                "running": backup_status["running"],
+                "interval_hours": backup_status["interval_hours"],
+                "retention_days": backup_status["retention_days"],
+                "total_backups": backup_stats.get("total_backups", 0),
+                "total_size_mb": backup_stats.get("total_size_mb", 0),
+                "latest_backup": backup_stats.get("latest_backup"),
+                "latest_backup_date": backup_stats.get("latest_backup_date")
+            },
+            "connection_pool": pool_stats,
+            "timestamp": datetime.now().isoformat()
+        }
+        
+    except Exception as e:
+        safe_logger.error(f"Database health check failed: {e}")
+        return {
+            "status": "unhealthy",
+            "error": str(e),
+            "timestamp": datetime.now().isoformat()
+        }
 
 # Generate barcodes from JSON data
 @app.post("/barcodes/generate", response_model=BarcodeGenerationResponse)

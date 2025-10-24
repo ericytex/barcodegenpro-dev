@@ -8,6 +8,7 @@ from datetime import datetime
 from typing import List, Dict, Any, Optional
 from dataclasses import dataclass
 from models.feature_models import Feature
+from models.database_connection import initialize_connection_pool, get_connection_context
 
 
 @dataclass
@@ -84,10 +85,19 @@ class PhoneModelRecord:
 
 
 class DatabaseManager:
-    def __init__(self, db_path: str = "data/barcode_generator.db"):
-        self.db_path = db_path
+    def __init__(self, db_path: str = None):
+        # Use environment variable or default path
+        self.db_path = db_path or os.getenv("DATABASE_PATH", "data/barcode_generator.db")
+        self.backup_enabled = os.getenv("DATABASE_BACKUP_ENABLED", "true").lower() == "true"
+        self.backup_dir = os.getenv("DATABASE_BACKUP_DIR", "data/backups")
+        self.backup_retention_days = int(os.getenv("DATABASE_BACKUP_RETENTION_DAYS", "30"))
         self.ensure_database_directory()
         self.init_database()
+        
+        # Initialize connection pool
+        max_connections = int(os.getenv("DATABASE_MAX_CONNECTIONS", "10"))
+        timeout = int(os.getenv("DATABASE_TIMEOUT", "30"))
+        initialize_connection_pool(self.db_path, max_connections, timeout)
     
     def ensure_database_directory(self):
         """Ensure the database directory exists"""
@@ -484,7 +494,7 @@ class DatabaseManager:
     
     def insert_barcode_record(self, record: BarcodeRecord) -> int:
         """Insert a new barcode record and return the ID"""
-        with sqlite3.connect(self.db_path) as conn:
+        with get_connection_context() as conn:
             cursor = conn.cursor()
             cursor.execute("""
                 INSERT INTO barcode_files (

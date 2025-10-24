@@ -9,6 +9,7 @@ import uuid
 from datetime import datetime
 from typing import Optional, Dict, List, Any
 from services.payment_service import OptimusPaymentService
+from utils.encryption import get_sensitive_field_manager
 
 logger = logging.getLogger(__name__)
 
@@ -19,6 +20,7 @@ class TokenService:
     def __init__(self, db_path: str = "data/barcode_generator.db"):
         self.db_path = db_path
         self.payment_service = OptimusPaymentService()
+        self.encryption_manager = get_sensitive_field_manager()
     
     # ==================== Token Balance Management ====================
     
@@ -242,7 +244,7 @@ class TokenService:
                     provider,
                     phone,
                     'pending',
-                    payment_result.get('payment_url'),
+                    self.encryption_manager.encrypt_for_storage('token_purchases', 'payment_url', payment_result.get('payment_url')),
                     payment_result.get('local_country'),
                     payment_result.get('local_currency'),
                     payment_result.get('local_amount')
@@ -324,7 +326,15 @@ class TokenService:
                 ORDER BY created_at DESC
                 LIMIT ?
             """, (user_id, limit))
-            return [dict(row) for row in cursor.fetchall()]
+            purchases = [dict(row) for row in cursor.fetchall()]
+            
+            # Decrypt sensitive fields
+            decrypted_purchases = []
+            for purchase in purchases:
+                decrypted_purchase = self.encryption_manager.decrypt_record('token_purchases', purchase)
+                decrypted_purchases.append(decrypted_purchase)
+            
+            return decrypted_purchases
     
     def get_usage_history(self, user_id: int, limit: int = 50) -> List[Dict[str, Any]]:
         """Get user's token usage history"""
