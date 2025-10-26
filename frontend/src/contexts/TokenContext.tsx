@@ -38,7 +38,10 @@ export function TokenProvider({ children }: { children: ReactNode }) {
 
     try {
       const apiConfig = getApiConfig();
-      const response = await fetch(`${apiConfig.baseUrl}/api/tokens/balance`, {
+      const url = apiConfig.baseUrl.startsWith('/') 
+        ? `${apiConfig.baseUrl}/tokens/balance`
+        : `${apiConfig.baseUrl}/api/tokens/balance`;
+      const response = await fetch(url, {
         headers: {
           'Authorization': `Bearer ${token}`,
           'X-API-Key': apiConfig.apiKey,

@@ -30,7 +30,10 @@ const AnnouncementBanner: React.FC<AnnouncementBannerProps> = ({ className = '' 
     try {
       setIsLoading(true);
       const baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8034';
-      const response = await fetch(`${baseUrl}/api/banners/active`, {
+      const url = baseUrl.startsWith('/') 
+        ? `${baseUrl}/banners/active`
+        : `${baseUrl}/api/banners/active`;
+      const response = await fetch(url, {
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('access_token')}`
         }

@@ -169,7 +169,10 @@ const PaymentsDashboard: React.FC = () => {
         params.append('status', statusFilter);
       }
 
-      const response = await fetch(`${API_BASE_URL}/api/tokens/admin/purchases?${params}`, {
+      const url = API_BASE_URL.startsWith('/') 
+        ? `${API_BASE_URL}/tokens/admin/purchases?${params}`
+        : `${API_BASE_URL}/api/tokens/admin/purchases?${params}`;
+      const response = await fetch(url, {
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('access_token')}`
         }

@@ -141,7 +141,10 @@ const SettingsPageNew = () => {
     setIsLoadingPaymentSettings(true);
     try {
       const baseUrl = apiService.getEnvironmentConfig().baseUrl;
-      const response = await fetch(`${baseUrl}/api/tokens/admin/payment-settings`, {
+      const url = baseUrl.startsWith('/') 
+        ? `${baseUrl}/tokens/admin/payment-settings`
+        : `${baseUrl}/api/tokens/admin/payment-settings`;
+      const response = await fetch(url, {
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('access_token')}`,
           'Content-Type': 'application/json'
@@ -165,7 +168,10 @@ const SettingsPageNew = () => {
     setIsSavingPaymentSettings(true);
     try {
       const baseUrl = apiService.getEnvironmentConfig().baseUrl;
-      const response = await fetch(`${baseUrl}/api/tokens/admin/payment-settings`, {
+      const url = baseUrl.startsWith('/') 
+        ? `${baseUrl}/tokens/admin/payment-settings`
+        : `${baseUrl}/api/tokens/admin/payment-settings`;
+      const response = await fetch(url, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('access_token')}`,
@@ -196,7 +202,10 @@ const SettingsPageNew = () => {
     setIsLoadingCollectionsSettings(true);
     try {
       const baseUrl = apiService.getEnvironmentConfig().baseUrl;
-      const response = await fetch(`${baseUrl}/api/tokens/admin/collections-settings`, {
+      const url = baseUrl.startsWith('/') 
+        ? `${baseUrl}/tokens/admin/collections-settings`
+        : `${baseUrl}/api/tokens/admin/collections-settings`;
+      const response = await fetch(url, {
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('access_token')}`,
           'Content-Type': 'application/json'
@@ -220,7 +229,10 @@ const SettingsPageNew = () => {
     setIsSavingCollectionsSettings(true);
     try {
       const baseUrl = apiService.getEnvironmentConfig().baseUrl;
-      const response = await fetch(`${baseUrl}/api/tokens/admin/collections-settings`, {
+      const url = baseUrl.startsWith('/') 
+        ? `${baseUrl}/tokens/admin/collections-settings`
+        : `${baseUrl}/api/tokens/admin/collections-settings`;
+      const response = await fetch(url, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('access_token')}`,
@@ -250,7 +262,10 @@ const SettingsPageNew = () => {
     setIsLoadingTokenSettings(true);
     try {
       const baseUrl = apiService.getEnvironmentConfig().baseUrl;
-      const response = await fetch(`${baseUrl}/api/tokens/admin/token-settings`, {
+      const url = baseUrl.startsWith('/') 
+        ? `${baseUrl}/tokens/admin/token-settings`
+        : `${baseUrl}/api/tokens/admin/token-settings`;
+      const response = await fetch(url, {
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('access_token')}`,
           'Content-Type': 'application/json'
