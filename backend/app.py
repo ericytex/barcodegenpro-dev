@@ -403,8 +403,7 @@ async def database_health_check(
         }
 
 # Generate barcodes from JSON data
-@app.post("/barcodes/generate", response_model=BarcodeGenerationResponse)
-@app.post("/api/barcodes/generate", response_model=BarcodeGenerationResponse)  # Backward compatibility
+@app.post("/api/barcodes/generate", response_model=BarcodeGenerationResponse)
 async def generate_barcodes(
     request: BarcodeGenerationRequest,
     current_user: dict = Depends(get_current_user)
@@ -487,8 +486,7 @@ async def generate_barcodes(
         )
 
 # Upload Excel file and generate barcodes
-@app.post("/barcodes/upload-excel", response_model=BarcodeGenerationResponse)
-@app.post("/api/barcodes/upload-excel", response_model=BarcodeGenerationResponse)  # Backward compatibility
+@app.post("/api/barcodes/upload-excel", response_model=BarcodeGenerationResponse)
 async def upload_excel_and_generate(
     file: UploadFile = File(...),
     create_pdf: bool = True,
@@ -642,8 +640,7 @@ async def upload_excel_and_generate(
         )
 
 # List all generated files
-@app.get("/barcodes/list", response_model=FileListResponse)
-@app.get("/api/barcodes/list", response_model=FileListResponse)  # Backward compatibility
+@app.get("/api/barcodes/list", response_model=FileListResponse)
 async def list_generated_files(
     api_key: str = Depends(verify_api_key),
     client_ip: str = Depends(check_rate_limit)
@@ -734,7 +731,7 @@ async def download_pdf_file(filename: str):
         )
 
 # Create PDF from existing barcodes
-@app.post("/barcodes/create-pdf", response_model=BarcodeGenerationResponse)
+@app.post("/api/barcodes/create-pdf", response_model=BarcodeGenerationResponse)
 async def create_pdf_from_existing(
     grid_cols: int = 5,
     grid_rows: int = 12,
@@ -792,8 +789,7 @@ async def test_samsung_galaxy_page():
             """)
     except Exception as e:
         return HTMLResponse(content=f"<html><body><h1>Error</h1><p>{str(e)}</p></body></html>")
-@app.post("/barcodes/generate-samsung-galaxy")
-@app.post("/api/barcodes/generate-samsung-galaxy")  # Backward compatibility
+@app.post("/api/barcodes/generate-samsung-galaxy")
 async def generate_samsung_galaxy_barcodes(
     model: str = "A669L",
     color: str = "SAPPHIRE BLACK",
@@ -835,8 +831,7 @@ async def generate_samsung_galaxy_barcodes(
         )
 
 # Test Samsung Galaxy Barcode Generation
-@app.post("/barcodes/test-samsung-galaxy")
-@app.post("/api/barcodes/test-samsung-galaxy")  # Backward compatibility  
+@app.post("/api/barcodes/test-samsung-galaxy")
 async def test_samsung_galaxy_barcodes(
     api_key: str = Depends(verify_api_key),
     client_ip: str = Depends(check_rate_limit)
@@ -864,7 +859,7 @@ async def test_samsung_galaxy_barcodes(
 
 
 # Samsung Galaxy Excel Upload Endpoint
-@app.post("/barcodes/upload-excel-samsung-galaxy")
+@app.post("/api/barcodes/upload-excel-samsung-galaxy")
 async def upload_excel_and_generate_samsung_galaxy_original(
     file: UploadFile = File(...),
     template_id: Optional[str] = Form(None),
@@ -989,7 +984,6 @@ async def upload_excel_and_generate_samsung_galaxy_original(
         )
 
 
-@app.post("/api/barcodes/upload-excel-samsung-galaxy")  # Backward compatibility
 async def upload_excel_and_generate_samsung_galaxy_api(
     file: UploadFile = File(...),
     template_id: Optional[str] = Form(None),
@@ -1002,7 +996,7 @@ async def upload_excel_and_generate_samsung_galaxy_api(
 
 
 # Samsung Galaxy PDF Upload Endpoint (Always generates PDF)
-@app.post("/barcodes/upload-excel-samsung-galaxy-pdf")
+@app.post("/api/barcodes/upload-excel-samsung-galaxy-pdf")
 async def upload_excel_and_generate_samsung_galaxy_pdf(
     file: UploadFile = File(...),
     template_id: Optional[str] = None,
@@ -1214,8 +1208,7 @@ async def upload_excel_and_generate_samsung_galaxy_pdf(
         )
 
 # Template Management Endpoints
-@app.post("/templates", response_model=dict)
-@app.post("/api/templates", response_model=dict)  # Backward compatibility
+@app.post("/api/templates", response_model=dict)
 async def save_template(
     template: BarcodeTemplate,
     api_key: str = Depends(verify_api_key),
@@ -1235,7 +1228,7 @@ async def save_template(
             detail=f"Error saving template: {str(e)}"
         )
 
-@app.post("/generate-from-template", response_model=dict)
+@app.post("/api/generate-from-template", response_model=dict)
 async def generate_from_template(
     template_id: str,
     excel_file: UploadFile = File(...),
@@ -1276,8 +1269,7 @@ async def generate_from_template(
             detail=f"Error generating barcodes: {str(e)}"
         )
 
-@app.get("/templates", response_model=dict)
-@app.get("/api/templates", response_model=dict)  # Backward compatibility
+@app.get("/api/templates", response_model=dict)
 async def list_templates(
     api_key: str = Depends(verify_api_key),
     client_ip: str = Depends(check_rate_limit)
@@ -1296,8 +1288,7 @@ async def list_templates(
             detail=f"Error listing templates: {str(e)}"
         )
 
-@app.get("/templates/{template_id}", response_model=dict)
-@app.get("/api/templates/{template_id}", response_model=dict)  # Backward compatibility
+@app.get("/api/templates/{template_id}", response_model=dict)
 async def get_template(
     template_id: str,
     api_key: str = Depends(verify_api_key),
@@ -1323,8 +1314,7 @@ async def get_template(
             detail=f"Error getting template: {str(e)}"
         )
 
-@app.put("/templates/{template_id}", response_model=dict)
-@app.put("/api/templates/{template_id}", response_model=dict)  # Backward compatibility
+@app.put("/api/templates/{template_id}", response_model=dict)
 async def update_template(
     template_id: str,
     template_data: dict,
@@ -1400,8 +1390,7 @@ async def update_template(
             detail=f"Error updating template: {str(e)}"
         )
 
-@app.delete("/templates/{template_id}", response_model=dict)
-@app.delete("/api/templates/{template_id}", response_model=dict)  # Backward compatibility
+@app.delete("/api/templates/{template_id}", response_model=dict)
 async def delete_template(
     template_id: str,
     api_key: str = Depends(verify_api_key),
@@ -1427,8 +1416,7 @@ async def delete_template(
             detail=f"Error deleting template: {str(e)}"
         )
 
-@app.get("/templates/default", response_model=dict)
-@app.get("/api/templates/default", response_model=dict)  # Backward compatibility
+@app.get("/api/templates/default", response_model=dict)
 async def get_default_template(
     api_key: str = Depends(verify_api_key),
     client_ip: str = Depends(check_rate_limit)
