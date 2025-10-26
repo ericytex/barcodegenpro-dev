@@ -165,8 +165,8 @@ const CollectionsDashboard: React.FC = () => {
     if (clean.startsWith("+")) clean = clean.slice(1);
     if (clean.startsWith("256")) clean = clean.slice(3);
 
-    // Debug logging for verification
-    console.log(`Phone: ${phoneNumber} -> Clean: ${clean} -> Prefix: ${clean.substring(0, 2)}`);
+    // Debug logging disabled for security (prevents PII exposure)
+    // console.log(`Phone: ${phoneNumber} -> Clean: ${clean} -> Prefix: ${clean.substring(0, 2)}`);
 
     // Uganda mobile provider prefixes
     const providers: Record<string, string[]> = {
@@ -180,12 +180,14 @@ const CollectionsDashboard: React.FC = () => {
 
     for (const [provider, prefixes] of Object.entries(providers)) {
       if (prefixes.some((p) => clean.startsWith(p))) {
-        console.log(`Matched ${provider} for prefix ${clean.substring(0, 2)}`);
+        // Logging disabled for security
+        // console.log(`Matched ${provider} for prefix ${clean.substring(0, 2)}`);
         return provider;
       }
     }
 
-    console.log(`No match found for prefix ${clean.substring(0, 2)}`);
+    // Logging disabled for security
+    // console.log(`No match found for prefix ${clean.substring(0, 2)}`);
     return "Not Verified";
   };
 
