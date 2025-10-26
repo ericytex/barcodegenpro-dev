@@ -60,8 +60,8 @@ app = FastAPI(
     title="Barcode Generator API",
     description="Secure API for generating barcode labels with IMEI, model info, and QR codes",
     version="1.0.0",
-    docs_url="/docs",
-    redoc_url="/redoc"
+    docs_url=None,  # Disable public docs - use protected endpoint
+    redoc_url=None  # Disable public redoc - use protected endpoint
 )
 
 # Configure CORS securely
@@ -133,6 +133,88 @@ app.include_router(banners_router)
 from routes.features import router as features_router
 
 app.include_router(features_router, prefix="/api")
+
+# Protected docs endpoints (admin only via API key)
+@app.get("/docs", include_in_schema=False)
+async def protected_docs(request: Request, api_key: str = None):
+    """Protected Swagger UI docs - Admin only (requires API key)"""
+    from fastapi import HTTPException, status
+    from fastapi.responses import HTMLResponse
+    
+    # Always require API key for docs access
+    if not api_key:
+        return HTMLResponse(
+            status_code=401,
+            content="<h1>401 Unauthorized</h1><p>API key required to access documentation.</p><p>Use: /docs?api_key=YOUR_KEY</p><p><small>To enable docs access, set API_KEYS environment variable in docker-compose.yml</small></p>"
+        )
+    
+    # Verify API key
+    api_keys = security_manager.api_keys
+    if api_keys and api_key not in api_keys:
+        return HTMLResponse(
+            status_code=401,
+            content="<h1>401 Unauthorized</h1><p>Invalid API key.</p>"
+        )
+    
+    # Return the built-in Swagger UI
+    from fastapi.openapi.docs import get_swagger_ui_html
+    return get_swagger_ui_html(
+        openapi_url=f"{app.openapi_url}?api_key={api_key}",
+        title=app.title,
+        swagger_js_url="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/swagger-ui-bundle.js",
+        swagger_css_url="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/swagger-ui.css"
+    )
+
+@app.get("/redoc", include_in_schema=False)
+async def protected_redoc(request: Request, api_key: str = None):
+    """Protected ReDoc - Admin only (requires API key)"""
+    from fastapi import HTTPException, status
+    from fastapi.responses import HTMLResponse
+    
+    # Always require API key for docs access
+    if not api_key:
+        return HTMLResponse(
+            status_code=401,
+            content="<h1>401 Unauthorized</h1><p>API key required to access documentation.</p><p>Use: /redoc?api_key=YOUR_KEY</p>"
+        )
+    
+    # Verify API key
+    api_keys = security_manager.api_keys
+    if api_keys and api_key not in api_keys:
+        return HTMLResponse(
+            status_code=401,
+            content="<h1>401 Unauthorized</h1><p>Invalid API key.</p>"
+        )
+    
+    # Return the built-in ReDoc
+    from fastapi.openapi.docs import get_redoc_html
+    return get_redoc_html(
+        openapi_url=f"{app.openapi_url}?api_key={api_key}",
+        title=app.title,
+        redoc_js_url="https://cdn.jsdelivr.net/npm/redoc@latest/bundles/redoc.standalone.js"
+    )
+
+@app.get("/openapi.json", include_in_schema=False)
+async def protected_openapi(request: Request, api_key: str = None):
+    """Protected OpenAPI schema - Admin only (requires API key)"""
+    from fastapi import HTTPException, status
+    
+    # Always require API key for schema access
+    if not api_key:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="API key required to access schema."
+        )
+    
+    # Verify API key
+    api_keys = security_manager.api_keys
+    if api_keys and api_key not in api_keys:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid API key."
+        )
+    
+    return app.openapi()
 
 # Startup event
 @app.on_event("startup")
