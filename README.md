@@ -20,29 +20,73 @@ barcodegenpro-dev/
 
 ### Prerequisites
 
-- **Docker & Docker Compose** (recommended)
+- **Docker & Docker Compose** (recommended) or **Docker Compose v2** (`docker compose`)
 - **Python 3.11+** (for local development)
 - **Node.js 18+** (for frontend development)
 
-### Docker Deployment (Recommended)
+### 🎯 Easiest Deployment (One Command!)
 
-1. **Clone the repository:**
-   ```bash
-   git clone https://github.com/ericytex/barcodegenpro-dev.git
-   cd barcodegenpro-dev
-   ```
+**For Docker Compose v2 (newer Docker versions):**
+```bash
+docker compose up -d
+```
 
-2. **Start the application:**
-   ```bash
-   docker-compose up -d
-   ```
+**For Docker Compose v1 (older installations):**
+```bash
+docker-compose up -d
+```
 
-3. **Access the application:**
-   - Frontend: http://localhost:80
-   - Backend API: http://localhost:8034
-   - API Documentation: http://localhost:8034/docs
+That's it! Your application will be running in seconds.
 
-### Local Development
+### 📍 Access Your Application
+
+Once started, access:
+- **Landing Page**: http://localhost:80
+- **Dashboard**: http://localhost:80/dashboard
+- **Backend API**: http://localhost:8034
+- **API Docs**: http://localhost:8034/docs
+
+### 🛠️ Common Commands
+
+```bash
+# View running services
+docker compose ps
+
+# View logs
+docker compose logs -f
+
+# Stop services
+docker compose down
+
+# Restart services
+docker compose restart
+
+# Rebuild after code changes
+docker compose up -d --build
+```
+
+### 🤖 Automated Deployment Script
+
+For an interactive deployment experience:
+```bash
+./start-local.sh
+```
+
+This script will:
+1. Check your prerequisites (Docker, Python, Node.js)
+2. Let you choose between Docker or Local development
+3. Set up everything automatically
+4. Start your services
+
+### 📚 Deployment Guides
+
+Detailed guides are available:
+- **`QUICK_START.md`** - Fastest way to get started (2 minutes)
+- **`DEPLOYMENT_OPTIONS.md`** - All deployment options explained
+- **`LOCAL_DEPLOYMENT.md`** - Detailed local development setup
+- **`start-local.sh`** - Interactive deployment script
+
+### Local Development (No Docker)
 
 #### Backend Setup
 ```bash
