@@ -13,8 +13,8 @@ RUN npm ci
 # Copy source code
 COPY . .
 
-# Build argument for API URL
-ARG VITE_API_BASE_URL=http://localhost:8034/api
+# Build argument for API URL (use relative path since nginx proxies /api/)
+ARG VITE_API_BASE_URL=/api
 ARG VITE_ENVIRONMENT=production
 
 # Set environment variables for build
