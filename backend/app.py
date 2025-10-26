@@ -672,7 +672,7 @@ async def list_generated_files(
         )
 
 # Download individual PNG file
-@app.get("/barcodes/download/{filename}")
+@app.get("/api/barcodes/download/{filename}")
 async def download_barcode_file(
     filename: str,
     api_key: str = Depends(verify_api_key),
@@ -705,7 +705,7 @@ async def download_barcode_file(
         )
 
 # Download PDF file
-@app.get("/barcodes/download-pdf/{filename}")
+@app.get("/api/barcodes/download-pdf/{filename}")
 async def download_pdf_file(filename: str):
     """Download a generated PDF file"""
     try:
