@@ -668,13 +668,9 @@ async def list_generated_files(
             detail=f"Error listing files: {str(e)}"
         )
 
-# Download individual PNG file
+# Download individual PNG file (no auth needed for preview)
 @app.get("/api/barcodes/download/{filename}")
-async def download_barcode_file(
-    filename: str,
-    api_key: str = Depends(verify_api_key),
-    client_ip: str = Depends(check_rate_limit)
-):
+async def download_barcode_file(filename: str):
     """Download a generated barcode PNG file"""
     try:
         # Sanitize filename to prevent path traversal
