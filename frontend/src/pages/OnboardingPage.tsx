@@ -42,7 +42,10 @@ export default function OnboardingPage() {
   const checkExistingSubscription = async () => {
     try {
       const apiConfig = getApiConfig();
-      const response = await fetch(`${apiConfig.baseUrl}/api/payments/status`, {
+      const url = apiConfig.baseUrl.startsWith('/') 
+        ? `${apiConfig.baseUrl}/payments/status`
+        : `${apiConfig.baseUrl}/api/payments/status`;
+      const response = await fetch(url, {
         headers: {
           'Authorization': `Bearer ${token}`,
           'X-API-Key': apiConfig.apiKey,
@@ -64,7 +67,10 @@ export default function OnboardingPage() {
   const loadPlans = async () => {
     try {
       const apiConfig = getApiConfig();
-      const response = await fetch(`${apiConfig.baseUrl}/api/payments/plans`, {
+      const url = apiConfig.baseUrl.startsWith('/') 
+        ? `${apiConfig.baseUrl}/payments/plans`
+        : `${apiConfig.baseUrl}/api/payments/plans`;
+      const response = await fetch(url, {
         headers: {
           'X-API-Key': apiConfig.apiKey,
         },
@@ -99,7 +105,10 @@ export default function OnboardingPage() {
         provider: selectedProvider,
       };
 
-      const response = await fetch(`${apiConfig.baseUrl}/api/payments/subscribe`, {
+      const url = apiConfig.baseUrl.startsWith('/') 
+        ? `${apiConfig.baseUrl}/payments/subscribe`
+        : `${apiConfig.baseUrl}/api/payments/subscribe`;
+      const response = await fetch(url, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -143,7 +152,10 @@ export default function OnboardingPage() {
     const checkStatus = async () => {
       try {
         const apiConfig = getApiConfig();
-        const response = await fetch(`${apiConfig.baseUrl}/api/payments/status`, {
+        const url = apiConfig.baseUrl.startsWith('/') 
+          ? `${apiConfig.baseUrl}/payments/status`
+          : `${apiConfig.baseUrl}/api/payments/status`;
+        const response = await fetch(url, {
           headers: {
             'Authorization': `Bearer ${token}`,
             'X-API-Key': apiConfig.apiKey,
@@ -604,7 +616,11 @@ export default function OnboardingPage() {
                     onClick={() => {
                       // For testing - simulate payment completion
                       if (paymentTransactionUid) {
-                        fetch(`${getApiConfig().baseUrl}/api/payments/test-payment?transaction_uid=${paymentTransactionUid}`, {
+                        const apiConfig = getApiConfig();
+                        const apiUrl = apiConfig.baseUrl.startsWith('/') 
+                          ? `${apiConfig.baseUrl}/payments/test-payment?transaction_uid=${paymentTransactionUid}`
+                          : `${apiConfig.baseUrl}/api/payments/test-payment?transaction_uid=${paymentTransactionUid}`;
+                        fetch(apiUrl, {
                           method: 'POST',
                           headers: {
                             'X-API-Key': getApiConfig().apiKey,

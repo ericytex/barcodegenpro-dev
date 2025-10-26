@@ -89,7 +89,10 @@ export function TokenPurchaseModal({ open, onClose, requiredTokens }: TokenPurch
     const fetchTokenSettings = async () => {
       try {
         const baseUrl = apiService.getEnvironmentConfig().baseUrl;
-        const response = await fetch(`${baseUrl}/api/tokens/admin/token-settings`, {
+        const url = baseUrl.startsWith('/') 
+          ? `${baseUrl}/tokens/admin/token-settings`
+          : `${baseUrl}/api/tokens/admin/token-settings`;
+        const response = await fetch(url, {
           headers: {
             'Authorization': `Bearer ${localStorage.getItem('access_token')}`,
             'Content-Type': 'application/json'
