@@ -265,131 +265,117 @@ export function ApiFileUpload({ onFileUploaded, onDirectGeneration }: ApiFileUpl
   return (
     <Card className="shadow-elegant">
       <CardHeader>
-        {/* Token Balance Alert */}
-        {(() => {
-          const alertInfo = getTokenAlertInfo();
-          if (!alertInfo) return null;
-          
-          return (
-            <Alert className={`${alertInfo.className} mb-4`}>
-              <Coins className={`h-4 w-4 ${alertInfo.iconColor}`} />
-              <AlertDescription className={alertInfo.textColor}>
-                {alertInfo.message}
-              </AlertDescription>
-            </Alert>
-          );
-        })()}
         
-        <CardTitle className="flex items-center gap-2">
-          <Upload className="w-5 h-5 text-primary" />
-          Excel File Upload
-        </CardTitle>
-        <CardDescription>
-          Upload your Excel file to process data or generate barcodes directly
-        </CardDescription>
+        {/* Direct Generation Mode Alert - Moved to Header */}
+        {useDirectGeneration && (
+          <div className="p-3 bg-blue-50 rounded border border-blue-200 mt-3">
+            <div className="flex items-center gap-2 mb-1">
+              <Zap className="w-4 h-4 text-blue-600" />
+              <span className="text-sm font-medium text-blue-800">Direct Generation Mode</span>
+            </div>
+            <p className="text-sm text-blue-700">
+              Upload Excel file and generate barcodes directly via API. No data preview needed.
+            </p>
+          </div>
+        )}
       </CardHeader>
-      <CardContent className="space-y-6">
-        {/* Upload Mode Selection */}
-        <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-2">
+      <CardContent className={useDirectGeneration ? "space-y-3" : "space-y-6"}>
+        {/* Upload Mode Selection - Compact when Direct Generation is ON */}
+        <div className={useDirectGeneration ? "space-y-2" : "space-y-4"}>
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-0">
+            <div className="flex items-center space-x-2 min-w-0 flex-1">
               <Switch
                 id="direct-generation"
                 checked={useDirectGeneration}
                 onCheckedChange={handleToggleChange}
+                className="flex-shrink-0"
               />
-              <Label htmlFor="direct-generation">Direct Barcode Generation</Label>
+              <Label htmlFor="direct-generation" className={`${useDirectGeneration ? "text-sm" : ""} text-sm sm:text-base leading-tight`}>
+                Direct Barcode Generation
+              </Label>
             </div>
             {balance !== null && (
-              <Badge variant="outline" className="gap-1">
+              <Badge variant="outline" className="gap-1 text-xs self-start sm:self-auto flex-shrink-0">
                 <Coins className="w-3 h-3" />
-                {balance} tokens
+                <span className="truncate">{balance} tokens</span>
               </Badge>
             )}
           </div>
           
-          
-          {useDirectGeneration && (
-            <div className="p-4 bg-blue-50 rounded-lg border border-blue-200">
-              <div className="flex items-center gap-2 mb-2">
-                <Zap className="w-4 h-4 text-blue-600" />
-                <span className="text-sm font-medium text-blue-800">Direct Generation Mode</span>
-              </div>
-              <p className="text-sm text-blue-700">
-                Upload Excel file and generate barcodes directly via API. No data preview needed.
-              </p>
-            </div>
-          )}
-
           {!useDirectGeneration && (
-            <div className="p-4 bg-green-50 rounded-lg border border-green-200">
+            <div className="p-3 sm:p-4 bg-green-50 rounded-lg border border-green-200">
               <div className="flex items-center gap-2 mb-2">
-                <FileSpreadsheet className="w-4 h-4 text-green-600" />
+                <FileSpreadsheet className="w-4 h-4 text-green-600 flex-shrink-0" />
                 <span className="text-sm font-medium text-green-800">Data Preview Mode</span>
               </div>
-              <p className="text-sm text-green-700">
+              <p className="text-sm text-green-700 leading-relaxed">
                 Upload Excel file to preview data and select which records to generate barcodes for.
               </p>
             </div>
           )}
         </div>
 
-        {/* PDF Settings for Direct Generation */}
+        {/* PDF Settings and Device Selection - Responsive Layout */}
         {useDirectGeneration && (
-          <div className="space-y-4">
-            <Label className="text-sm font-medium">PDF Grid Settings</Label>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="pdf-cols" className="text-xs">Columns</Label>
-                <Input
-                  id="pdf-cols"
-                  type="number"
-                  min="1"
-                  max="10"
-                  value={pdfGridCols}
-                  onChange={(e) => setPdfGridCols(parseInt(e.target.value) || 5)}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="pdf-rows" className="text-xs">Rows</Label>
-                <Input
-                  id="pdf-rows"
-                  type="number"
-                  min="1"
-                  max="20"
-                  value={pdfGridRows}
-                  onChange={(e) => setPdfGridRows(parseInt(e.target.value) || 12)}
-                />
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Scalable Device Selection for Direct Generation */}
-        {useDirectGeneration && (
-          <div className="space-y-4 p-4 bg-primary/5 rounded-lg border border-primary/20">
-            <div className="flex items-center gap-2">
-              <Smartphone className="w-4 h-4 text-primary" />
-              <Label className="text-sm font-medium">Device Selection (Simple)</Label>
-            </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
+            {/* PDF Grid Settings */}
             <div className="space-y-2">
+              <Label className="text-xs font-medium">PDF Grid Settings</Label>
+              <div className="flex gap-2">
+                <div className="flex-1">
+                  <Label htmlFor="pdf-cols" className="text-xs">Columns</Label>
+                  <Input
+                    id="pdf-cols"
+                    type="number"
+                    min="1"
+                    max="10"
+                    value={pdfGridCols}
+                    onChange={(e) => setPdfGridCols(parseInt(e.target.value) || 5)}
+                    className="h-8 text-sm"
+                    disabled={true}
+                  />
+                </div>
+                <div className="flex-1">
+                  <Label htmlFor="pdf-rows" className="text-xs">Rows</Label>
+                  <Input
+                    id="pdf-rows"
+                    type="number"
+                    min="1"
+                    max="20"
+                    value={pdfGridRows}
+                    onChange={(e) => setPdfGridRows(parseInt(e.target.value) || 12)}
+                    className="h-8 text-sm"
+                    disabled={true}
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Device Selection */}
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <Smartphone className="w-3 h-3 text-primary" />
+                <Label className="text-xs font-medium">Device Selection (Simple)</Label>
+              </div>
               <SimpleDeviceSelector
                 value={selectedDevice}
                 onChange={handleDeviceChange}
                 placeholder="Select device for specialized barcode generation..."
+                disabled={true}
               />
               <p className="text-xs text-muted-foreground">
-                Select a device to generate specialized barcodes. Leave empty for default generation.
+                Device selection is temporarily disabled. Coming in the next version.
               </p>
             </div>
           </div>
         )}
 
-        {/* Upload Area */}
+        {/* Upload Area - Responsive Design */}
         <div
           {...getRootProps()}
           className={`
-            border-2 border-dashed rounded-lg p-8 text-center transition-all duration-200
+            border-2 border-dashed rounded-lg text-center transition-all duration-200
+            ${useDirectGeneration ? 'p-6 sm:p-12 min-h-[150px] sm:min-h-[200px]' : 'p-4 sm:p-8'}
             ${!useDirectGeneration
               ? 'opacity-40 cursor-not-allowed bg-gray-100 dark:bg-gray-900 border-gray-300 dark:border-gray-700'
               : isDragActive 
@@ -457,31 +443,39 @@ export function ApiFileUpload({ onFileUploaded, onDirectGeneration }: ApiFileUpl
                 <FileSpreadsheet className="w-6 h-6 text-gray-400" />
               </div>
               <div className="space-y-2">
-                <p className="text-sm font-medium text-gray-500">
+                <p className="text-sm font-medium text-gray-500 leading-tight">
                   Upload Disabled
                 </p>
-                <p className="text-xs text-gray-400">
+                <p className="text-xs text-gray-400 leading-tight">
                   Enable "Direct Barcode Generation" to upload files
                 </p>
               </div>
             </div>
           ) : (
-            <div className="space-y-4">
-              <div className="w-12 h-12 mx-auto bg-muted rounded-full flex items-center justify-center">
-                <FileSpreadsheet className="w-6 h-6 text-muted-foreground" />
+            <div className={useDirectGeneration ? "space-y-4 sm:space-y-6" : "space-y-3 sm:space-y-4"}>
+              <div className={`mx-auto bg-muted rounded-full flex items-center justify-center ${
+                useDirectGeneration ? 'w-12 h-12 sm:w-16 sm:h-16' : 'w-10 h-10 sm:w-12 sm:h-12'
+              }`}>
+                <FileSpreadsheet className={`text-muted-foreground ${
+                  useDirectGeneration ? 'w-6 h-6 sm:w-8 sm:h-8' : 'w-5 h-5 sm:w-6 sm:h-6'
+                }`} />
               </div>
               <div className="space-y-2">
-                <p className="text-sm font-medium">
+                <p className={`font-medium leading-tight ${
+                  useDirectGeneration ? 'text-sm sm:text-base' : 'text-xs sm:text-sm'
+                }`}>
                   {isDragActive 
                     ? 'Drop your Excel file here' 
                     : 'Drag & drop your Excel file here, or click to select'
                   }
                 </p>
-                <p className="text-xs text-muted-foreground">
+                <p className={`text-muted-foreground leading-tight ${
+                  useDirectGeneration ? 'text-xs sm:text-sm' : 'text-xs'
+                }`}>
                   Supports .xlsx and .xls files
                 </p>
                 {useDirectGeneration && (
-                  <p className="text-xs text-blue-600 font-medium">
+                  <p className="text-xs sm:text-sm text-blue-600 font-medium leading-tight">
                     Will generate barcodes directly via API
                   </p>
                 )}
@@ -491,9 +485,13 @@ export function ApiFileUpload({ onFileUploaded, onDirectGeneration }: ApiFileUpl
         </div>
 
         {/* File Requirements */}
-        <div className="text-xs text-muted-foreground space-y-1">
-          <p><strong>Expected columns:</strong> imei, box_id, model, product, color, dn</p>
-          <p><strong>Note:</strong> The 'product' column will be used to automatically extract colors</p>
+        <div className="text-xs text-muted-foreground space-y-1 px-2 sm:px-0">
+          <p className="break-words leading-relaxed">
+            <strong>Expected columns:</strong> imei, box_id, model, product, color, dn
+          </p>
+          <p className="break-words leading-relaxed">
+            <strong>Note:</strong> The 'product' column will be used to automatically extract colors
+          </p>
         </div>
       </CardContent>
       

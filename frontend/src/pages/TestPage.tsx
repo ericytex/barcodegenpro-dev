@@ -92,21 +92,23 @@ function TestPage() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          {/* Device Selector */}
-          <div className="space-y-2">
-            <Label>Select Device (Optional)</Label>
-            <DeviceSelector
-              value={selectedDevice}
-              onChange={handleDeviceChange}
-              placeholder="Choose a device or enter manually below..."
-            />
-            {selectedDevice && (
-              <div className="text-sm text-muted-foreground">
-                Using device: <strong>{selectedDevice.brand} {selectedDevice.name}</strong> - 
-                Model: {selectedDevice.model_code}, D/N: {selectedDevice.default_dn}
-              </div>
-            )}
-          </div>
+          {/* Device Selector - Hidden */}
+          {false && (
+            <div className="space-y-2">
+              <Label>Select Device (Optional)</Label>
+              <DeviceSelector
+                value={selectedDevice}
+                onChange={handleDeviceChange}
+                placeholder="Choose a device or enter manually below..."
+              />
+              {selectedDevice && (
+                <div className="text-sm text-muted-foreground">
+                  Using device: <strong>{selectedDevice.brand} {selectedDevice.name}</strong> - 
+                  Model: {selectedDevice.model_code}, D/N: {selectedDevice.default_dn}
+                </div>
+              )}
+            </div>
+          )}
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-2">
@@ -267,16 +269,6 @@ function TestPage() {
                           <Badge variant="secondary">PNG</Badge>
                           <span className="text-sm font-medium">{filename}</span>
                         </div>
-                        <div className="flex items-center gap-2">
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => handleDownloadTest(filename, false)}
-                          >
-                            <Download className="w-3 h-3 mr-1" />
-                            Download
-                          </Button>
-                        </div>
                       </div>
                       {/* Authenticated Image Preview */}
                       <div className="mt-2">
@@ -293,6 +285,7 @@ function TestPage() {
                       </div>
                     </div>
                   ))}
+                  <p className="text-xs text-muted-foreground">Individual PNG files are included in the PDF collection below</p>
                 </div>
               </div>
             )}

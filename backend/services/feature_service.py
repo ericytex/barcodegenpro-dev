@@ -13,3 +13,11 @@ class FeatureService:
     def create_feature(self, feature: Feature) -> int:
         """Create a new feature in the database"""
         return self.db_manager.insert_feature(feature)
+    
+    def update_feature(self, feature_id: int, updates: Dict[str, Any]) -> bool:
+        """Update a feature in the database"""
+        return self.db_manager.update_feature(feature_id, updates)
+    
+    def delete_feature(self, feature_id: int) -> bool:
+        """Delete a feature from the database"""
+        return self.db_manager.delete_feature(feature_id)

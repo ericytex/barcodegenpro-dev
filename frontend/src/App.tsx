@@ -8,6 +8,7 @@ import { AuthProvider } from "@/contexts/AuthContext";
 import { TokenProvider } from "@/contexts/TokenContext";
 import { NotificationProvider } from "@/contexts/NotificationContext";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
+import { GlobalErrorHandler } from "@/components/GlobalErrorHandler";
 import Index from "./pages/Index";
 import TestPage from "./pages/TestPage";
 import UploadPage from "./pages/UploadPage";
@@ -22,7 +23,9 @@ import CollectionsDashboard from "./pages/CollectionsDashboard";
 import LoginPage from "./pages/LoginPage";
 import RegisterPage from "./pages/RegisterPage";
 import FeaturesPage from "./pages/FeaturesPage";
+import LandingPage from "./pages/LandingPage";
 import NotFound from "./pages/NotFound";
+import HowToPage from "./pages/HowToPage";
 
 const queryClient = new QueryClient();
 
@@ -34,15 +37,18 @@ const App = () => (
           <TokenProvider>
             <NotificationProvider>
               <MenuProvider>
-              <Toaster />
-              <Sonner />
-              <Routes>
+                <GlobalErrorHandler>
+                  <Toaster />
+                  <Sonner />
+                  <Routes>
                 {/* Public routes */}
+                <Route path="/" element={<LandingPage />} />
                 <Route path="/login" element={<LoginPage />} />
                 <Route path="/register" element={<RegisterPage />} />
                 
                 {/* Protected routes */}
-                <Route path="/" element={<ProtectedRoute><Index /></ProtectedRoute>} />
+                <Route path="/dashboard" element={<ProtectedRoute><Index /></ProtectedRoute>} />
+                <Route path="/how-to" element={<ProtectedRoute><HowToPage /></ProtectedRoute>} />
                 <Route path="/test" element={<ProtectedRoute><TestPage /></ProtectedRoute>} />
                 <Route path="/upload" element={<ProtectedRoute><UploadPage /></ProtectedRoute>} />
                 <Route path="/preview" element={<ProtectedRoute><PreviewPage /></ProtectedRoute>} />
@@ -57,7 +63,8 @@ const App = () => (
                 
                 {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
                 <Route path="*" element={<NotFound />} />
-              </Routes>
+                  </Routes>
+                </GlobalErrorHandler>
               </MenuProvider>
             </NotificationProvider>
           </TokenProvider>

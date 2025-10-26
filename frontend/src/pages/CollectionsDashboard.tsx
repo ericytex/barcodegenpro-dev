@@ -4,105 +4,57 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { useAuth } from '@/contexts/AuthContext';
 import { Navigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
-import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { 
   BarChart3, 
   RefreshCw, 
-  Settings, 
   DollarSign, 
   TrendingUp, 
-  AlertCircle,
   CheckCircle,
   Clock,
-  XCircle,
-  Smartphone,
+  Activity,
+  Users,
+  ArrowUpRight,
+  ArrowDownRight,
   Calendar,
-  Filter
+  Filter,
+  Download,
+  Eye,
+  ChevronLeft,
+  ChevronRight,
+  Search,
+  X,
+  ArrowUpDown,
+  ChevronUp,
+  ChevronDown
 } from 'lucide-react';
+import { Input } from '@/components/ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8034';
 
-interface Collection {
-  id: string;
-  transaction_uid: string;
-  amount: number;
-  currency: string;
-  status: string;
-  provider: string;
-  phone: string;
-  created_at: string;
-  completed_at?: string;
-  description: string;
-  reference: string;
-  formatted_amount: string;
-  status_badge: { color: string; text: string };
-  provider_badge: { color: string; text: string };
-}
-
-interface CollectionsData {
-  collections: Collection[];
-  total_count: number;
-  total_amount: number;
-  formatted_total_amount: string;
-  status_counts: Record<string, number>;
-  summary: {
-    total_collections: number;
-    total_amount: number;
-    successful_collections: number;
-    pending_collections: number;
-    failed_collections: number;
-  };
-}
-
-interface CollectionsResponse {
-  success: boolean;
-  data: CollectionsData;
-  total_count: number;
-  cached: boolean;
-  fetched_at: string;
-  error?: string;
-  message?: string;
-}
-
-interface StatsData {
-  daily_stats: Array<{
-    date: string;
-    total_count: number;
-    total_amount: number;
-    completed: number;
-    pending: number;
-    failed: number;
-  }>;
-  period_days: number;
-  start_date: string;
-  end_date: string;
-}
-
 const CollectionsDashboard: React.FC = () => {
   const { user } = useAuth();
-  const [collections, setCollections] = useState<CollectionsData | null>(null);
-  const [stats, setStats] = useState<StatsData | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [refreshing, setRefreshing] = useState(false);
-  const [apiKey, setApiKey] = useState('');
-  const [configuring, setConfiguring] = useState(false);
-  const [serviceStatus, setServiceStatus] = useState<any>(null);
   const [optimusData, setOptimusData] = useState<any>(null);
   const [loadingOptimus, setLoadingOptimus] = useState(false);
+  const [paymentsData, setPaymentsData] = useState<any[]>([]);
   
-  // Filters
-  const [limit, setLimit] = useState(50);
-  const [offset, setOffset] = useState(0);
-  const [startDate, setStartDate] = useState('');
-  const [endDate, setEndDate] = useState('');
-  const [useCache, setUseCache] = useState(false);
-  const [statsDays, setStatsDays] = useState(30);
+  // Table state
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(10);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [statusFilter, setStatusFilter] = useState('all');
+  const [sortBy, setSortBy] = useState('transaction_date');
+  const [sortOrder, setSortOrder] = useState('desc');
+  
+  // Modal state
+  const [selectedTransaction, setSelectedTransaction] = useState<any>(null);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  
+  // Cache state
+  const [lastDataLoad, setLastDataLoad] = useState<number>(0);
+  const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes in milliseconds
 
   // Check if user is super admin
   if (!user?.is_super_admin) {
@@ -110,74 +62,36 @@ const CollectionsDashboard: React.FC = () => {
   }
 
   useEffect(() => {
-    loadServiceStatus();
-    loadCollections();
-    loadStats();
+    const shouldLoadData = () => {
+      const now = Date.now();
+      const timeSinceLastLoad = now - lastDataLoad;
+      return timeSinceLastLoad > CACHE_DURATION || lastDataLoad === 0;
+    };
+
+    if (shouldLoadData()) {
+      console.log('Loading fresh data (cache expired or first load)');
+      loadOptimusData();
+      loadPaymentsData();
+      setLastDataLoad(Date.now());
+    } else {
+      console.log('Using cached data (cache still valid)');
+    }
   }, []);
 
-  const loadServiceStatus = async () => {
+  const loadPaymentsData = async () => {
     try {
-      const response = await fetch(`${API_BASE_URL}/api/collections/status`, {
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('access_token')}`
-        }
-      });
-      const data = await response.json();
-      setServiceStatus(data.data);
-    } catch (error) {
-      console.error('Error loading service status:', error);
-    }
-  };
-
-  const loadCollections = async () => {
-    setLoading(true);
-    try {
-      const params = new URLSearchParams({
-        limit: limit.toString(),
-        offset: offset.toString(),
-        use_cache: useCache.toString()
-      });
-      
-      if (startDate) params.append('start_date', startDate);
-      if (endDate) params.append('end_date', endDate);
-
-      const response = await fetch(`${API_BASE_URL}/api/collections/?${params}`, {
+      const response = await fetch(`${API_BASE_URL}/api/tokens/admin/purchases?limit=200`, {
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('access_token')}`
         }
       });
       
-      const data: CollectionsResponse = await response.json();
-      
-      if (data.success) {
-        setCollections(data.data);
-        toast.success(`Loaded ${data.data.collections.length} collections`);
-      } else {
-        toast.error(data.message || 'Failed to load collections');
+      if (response.ok) {
+        const data = await response.json();
+        setPaymentsData(data.purchases || []);
       }
     } catch (error) {
-      console.error('Error loading collections:', error);
-      toast.error('Failed to load collections');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const loadStats = async () => {
-    try {
-      const response = await fetch(`${API_BASE_URL}/api/collections/stats?days=${statsDays}`, {
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('access_token')}`
-        }
-      });
-      
-      const data = await response.json();
-      
-      if (data.success) {
-        setStats(data.data);
-      }
-    } catch (error) {
-      console.error('Error loading stats:', error);
+      console.error('Error loading payments data:', error);
     }
   };
 
@@ -194,339 +108,455 @@ const CollectionsDashboard: React.FC = () => {
       
       if (data.success) {
         setOptimusData(data);
-        toast.success(`Loaded ${data.total_transactions} transactions from Optimus`);
+        toast.success(`Loaded ${data.total_transactions} transactions`);
       } else {
-        toast.error(data.message || 'Failed to load Optimus data');
+        toast.error(data.message || 'Failed to load transaction data');
       }
     } catch (error) {
-      console.error('Error loading Optimus data:', error);
-      toast.error('Failed to load Optimus data');
+      console.error('Error loading transaction data:', error);
+      toast.error('Failed to load transaction data');
     } finally {
       setLoadingOptimus(false);
     }
   };
 
-  const refreshCollections = async () => {
-    setRefreshing(true);
-    try {
-      const response = await fetch(`${API_BASE_URL}/api/collections/refresh?limit=${limit}`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('access_token')}`
-        }
-      });
-      
-      const data = await response.json();
-      
-      if (data.success) {
-        toast.success('Collections cache refreshed');
-        loadCollections();
-        loadStats();
-      } else {
-        toast.error(data.message || 'Failed to refresh collections');
+  // Helper functions for table
+  const formatDate = (dateString: string) => {
+    if (!dateString) return 'N/A';
+    return new Date(dateString).toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  };
+
+  const getCustomerName = (transactionUid: string) => {
+    if (!transactionUid || !paymentsData.length) return 'External Transaction';
+    
+    // Try to find matching transaction by app_transaction_uid or transaction_uid
+    const payment = paymentsData.find(p => 
+      p.transaction_uid === transactionUid || 
+      p.app_transaction_uid === transactionUid
+    );
+    
+    if (payment) {
+      return payment.username || payment.email || 'Unknown User';
+    }
+    
+    return 'External Transaction';
+  };
+
+  // Network detection based on phone number prefixes
+  const categorizeNumber = (phoneNumber: string): string => {
+    if (!phoneNumber) return 'Not Verified';
+    
+    // Clean formatting
+    let clean = phoneNumber.replace(/\s|-/g, "");
+
+    // Remove country code (Uganda: +256)
+    if (clean.startsWith("+")) clean = clean.slice(1);
+    if (clean.startsWith("256")) clean = clean.slice(3);
+
+    // Debug logging for verification
+    console.log(`Phone: ${phoneNumber} -> Clean: ${clean} -> Prefix: ${clean.substring(0, 2)}`);
+
+    // Uganda mobile provider prefixes
+    const providers: Record<string, string[]> = {
+      MTN: ["77", "78", "76", "71", "72", "73", "74"],
+      Airtel: ["70", "75", "79"],
+      Africell: ["79"],
+      "Safaricom (Mpesa)": ["71", "72"],
+      Telkom: ["77"],
+      Equitel: ["76"],
+    };
+
+    for (const [provider, prefixes] of Object.entries(providers)) {
+      if (prefixes.some((p) => clean.startsWith(p))) {
+        console.log(`Matched ${provider} for prefix ${clean.substring(0, 2)}`);
+        return provider;
       }
-    } catch (error) {
-      console.error('Error refreshing collections:', error);
-      toast.error('Failed to refresh collections');
-    } finally {
-      setRefreshing(false);
+    }
+
+    console.log(`No match found for prefix ${clean.substring(0, 2)}`);
+    return "Not Verified";
+  };
+
+  const getMobileNetwork = (transaction: any) => {
+    if (!transaction) return 'Not Verified';
+    
+    // First try to match by transaction_uid from token_purchases table
+    if (paymentsData.length > 0) {
+      const payment = paymentsData.find(p => 
+        p.transaction_uid === transaction.app_transaction_uid
+      );
+      
+      if (payment && payment.provider && payment.provider !== 'Not Verified') {
+        return payment.provider; // Use the provider field from token_purchases table
+      }
+    }
+    
+    // If no match or provider is "Not Verified", try phone number detection
+    if (transaction.debit_phone_number) {
+      const detectedNetwork = categorizeNumber(transaction.debit_phone_number);
+      if (detectedNetwork !== 'Not Verified') {
+        return detectedNetwork;
+      }
+    }
+    
+    return 'Not Verified';
+  };
+
+  const getNetworkPill = (network: string) => {
+    const baseClasses = "inline-flex items-center px-2 py-1 rounded-full text-xs font-medium text-white";
+    
+    switch (network) {
+      case 'MTN':
+        return <span className={`${baseClasses} bg-yellow-600`}>MTN</span>;
+      case 'AIRTEL':
+        return <span className={`${baseClasses} bg-red-600`}>AIRTEL</span>;
+      case 'Airtel':
+        return <span className={`${baseClasses} bg-red-600`}>Airtel</span>;
+      case 'Africell':
+        return <span className={`${baseClasses} bg-blue-600`}>Africell</span>;
+      case 'MPESA':
+        return <span className={`${baseClasses} bg-green-600`}>MPESA</span>;
+      case 'Safaricom (Mpesa)':
+        return <span className={`${baseClasses} bg-green-600`}>Mpesa</span>;
+      case 'Telkom':
+        return <span className={`${baseClasses} bg-purple-600`}>Telkom</span>;
+      case 'Equitel':
+        return <span className={`${baseClasses} bg-orange-600`}>Equitel</span>;
+      case 'Not Verified':
+        return <span className={`${baseClasses} bg-gray-500`}>Not Verified</span>;
+      default:
+        return <span className={`${baseClasses} bg-gray-600`}>{network}</span>;
     }
   };
 
-  const configureApiKey = async () => {
-    if (!apiKey.trim()) {
-      toast.error('Please enter an API key');
+  const openTransactionModal = (transaction: any) => {
+    setSelectedTransaction(transaction);
+    setIsModalOpen(true);
+  };
+
+  const closeTransactionModal = () => {
+    setSelectedTransaction(null);
+    setIsModalOpen(false);
+  };
+
+  const refreshData = async () => {
+    console.log('Manual refresh requested');
+    setLastDataLoad(0); // Reset cache to force fresh load
+    await loadOptimusData();
+    await loadPaymentsData();
+    setLastDataLoad(Date.now());
+  };
+
+  // Export functionality
+  const exportToCSV = () => {
+    if (!optimusData?.data?.data) {
+      toast.error('No data available to export');
       return;
     }
 
-    setConfiguring(true);
-    try {
-      const response = await fetch(`${API_BASE_URL}/api/collections/configure`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('access_token')}`
-        },
-        body: JSON.stringify({ api_key: apiKey })
-      });
+    const filteredData = getFilteredAndSortedData();
+    
+    // CSV headers
+    const headers = [
+      'Transaction ID',
+      'User',
+      'Mobile Number',
+      'Detected Network',
+      'Amount (UGX)',
+      'Status',
+      'Created Date',
+      'Completed Date',
+      'Description',
+      'Reference'
+    ];
+
+    // Convert data to CSV format
+    const csvContent = [
+      headers.join(','),
+      ...filteredData.map(transaction => [
+        transaction.app_transaction_uid,
+        `"${getCustomerName(transaction.app_transaction_uid)}"`,
+        `"${transaction.debit_phone_number}"`,
+        `"${getMobileNetwork(transaction)}"`,
+        parseInt(transaction.total_amount || 0),
+        transaction.transaction_status,
+        `"${formatDate(transaction.transaction_date || transaction.created_at)}"`,
+        transaction.completed_at ? `"${formatDate(transaction.completed_at)}"` : 'N/A',
+        `"${transaction.description || 'N/A'}"`,
+        `"${transaction.reference || 'N/A'}"`
+      ].join(','))
+    ].join('\n');
+
+    // Create and download file
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    link.setAttribute('href', url);
+    link.setAttribute('download', `collections-${new Date().toISOString().split('T')[0]}.csv`);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    
+    toast.success(`Exported ${filteredData.length} transactions to CSV`);
+  };
+
+  const getFilteredAndSortedData = () => {
+    if (!optimusData?.data?.data) return [];
+    
+    let filtered = optimusData.data.data.filter((transaction: any) => {
+      // Search filter
+      const customerName = getCustomerName(transaction.app_transaction_uid);
+      const matchesSearch = searchTerm === '' || 
+        transaction.app_transaction_uid?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        transaction.debit_phone_number?.includes(searchTerm) ||
+        customerName?.toLowerCase().includes(searchTerm.toLowerCase());
       
-      const data = await response.json();
+      // Status filter
+      const matchesStatus = statusFilter === 'all' || 
+        (statusFilter === 'cancelled' ? transaction.transaction_status !== 'completed' : transaction.transaction_status === statusFilter);
       
-      if (data.success) {
-        toast.success('API key configured successfully');
-        setApiKey('');
-        loadServiceStatus();
-      } else {
-        toast.error(data.message || 'Failed to configure API key');
+      return matchesSearch && matchesStatus;
+    });
+
+    // Sort data
+    filtered.sort((a: any, b: any) => {
+      let aValue, bValue;
+      
+      switch (sortBy) {
+        case 'transaction_date':
+          aValue = new Date(a.transaction_date || a.created_at || 0).getTime();
+          bValue = new Date(b.transaction_date || b.created_at || 0).getTime();
+          break;
+        case 'amount':
+          aValue = parseInt(a.total_amount || 0);
+          bValue = parseInt(b.total_amount || 0);
+          break;
+        case 'status':
+          aValue = a.transaction_status || '';
+          bValue = b.transaction_status || '';
+          break;
+        default:
+          aValue = a.app_transaction_uid || '';
+          bValue = b.app_transaction_uid || '';
       }
-    } catch (error) {
-      console.error('Error configuring API key:', error);
-      toast.error('Failed to configure API key');
-    } finally {
-      setConfiguring(false);
+      
+      if (sortOrder === 'asc') {
+        return aValue > bValue ? 1 : -1;
+      } else {
+        return aValue < bValue ? 1 : -1;
+      }
+    });
+
+    return filtered;
+  };
+
+  const getPaginatedData = () => {
+    const filteredData = getFilteredAndSortedData();
+    const startIndex = (currentPage - 1) * itemsPerPage;
+    const endIndex = startIndex + itemsPerPage;
+    return filteredData.slice(startIndex, endIndex);
+  };
+
+  const handleSort = (column: string) => {
+    if (sortBy === column) {
+      setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortBy(column);
+      setSortOrder('desc');
     }
   };
 
-  const getStatusIcon = (status: string) => {
-    switch (status) {
-      case 'completed':
-        return <CheckCircle className="h-4 w-4 text-green-500" />;
-      case 'pending':
-        return <Clock className="h-4 w-4 text-yellow-500" />;
-      case 'failed':
-        return <XCircle className="h-4 w-4 text-red-500" />;
-      default:
-        return <AlertCircle className="h-4 w-4 text-gray-500" />;
+  const getSortIcon = (column: string) => {
+    if (sortBy !== column) {
+      return <ArrowUpDown className="h-4 w-4 text-gray-400" />;
     }
+    return sortOrder === 'asc' ? 
+      <ChevronUp className="h-4 w-4 text-gray-600" /> : 
+      <ChevronDown className="h-4 w-4 text-gray-600" />;
   };
 
-  const getProviderIcon = (provider: string) => {
-    return <Smartphone className="h-4 w-4" />;
+  const totalPages = Math.ceil(getFilteredAndSortedData().length / itemsPerPage);
+
+  const handlePageChange = (page: number) => {
+    setCurrentPage(page);
   };
 
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleString();
+  const handleItemsPerPageChange = (value: string) => {
+    setItemsPerPage(parseInt(value));
+    setCurrentPage(1);
   };
 
-  const formatAmount = (amount: number, currency: string = 'UGX') => {
-    return new Intl.NumberFormat('en-US').format(amount) + ' ' + currency;
+  const clearFilters = () => {
+    setSearchTerm('');
+    setStatusFilter('all');
+    setCurrentPage(1);
   };
 
   return (
     <DashboardLayout>
-      <div className="space-y-6">
-      {/* Header */}
+      <div className="min-h-screen bg-gray-50/50">
+        {/* Professional Header */}
+        <div className="bg-white border-b border-gray-200 px-6 py-4">
       <div className="flex items-center justify-between">
+            <div className="space-y-1">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-blue-100 rounded-lg">
+                  <TrendingUp className="h-6 w-6 text-blue-600" />
+                </div>
         <div>
-          <h1 className="text-3xl font-bold">Collections Dashboard</h1>
-          <p className="text-muted-foreground">
-            Monitor Optimus mobile money collections
+                  <h1 className="text-3xl font-bold text-gray-900">Collections Dashboard</h1>
+                  <p className="text-gray-600 text-lg">
+                    Real-time mobile money transaction monitoring
+                    {lastDataLoad > 0 && (
+                      <span className="ml-2 text-sm text-gray-500">
+                        (Last updated: {new Date(lastDataLoad).toLocaleTimeString()})
+                      </span>
+                    )}
           </p>
         </div>
-        <div className="flex items-center gap-2">
-          <Button
-            onClick={loadOptimusData}
-            disabled={loadingOptimus}
-            variant="outline"
-            size="sm"
-          >
-            <RefreshCw className={`h-4 w-4 mr-2 ${loadingOptimus ? 'animate-spin' : ''}`} />
-            Load Optimus Data
-          </Button>
-          <Button
-            onClick={refreshCollections}
-            disabled={refreshing}
-            variant="outline"
-            size="sm"
-          >
-            <RefreshCw className={`h-4 w-4 mr-2 ${refreshing ? 'animate-spin' : ''}`} />
-            Refresh
-          </Button>
-          <Button onClick={loadCollections} disabled={loading}>
-            Load Collections
-          </Button>
-        </div>
-      </div>
-
-      {/* Service Status */}
-      {serviceStatus && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Settings className="h-5 w-5" />
-              Service Status
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div className="flex items-center gap-2">
-                <span className="text-sm font-medium">API Key:</span>
-                <Badge variant={serviceStatus.api_key_configured ? "default" : "destructive"}>
-                  {serviceStatus.api_key_configured ? "Configured" : "Not Configured"}
-                </Badge>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="text-sm font-medium">API Status:</span>
-                <Badge variant={
-                  serviceStatus.api_status === "connected" ? "default" : 
-                  serviceStatus.api_status === "error" ? "destructive" : "secondary"
-                }>
-                  {serviceStatus.api_status}
-                </Badge>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="text-sm font-medium">Service:</span>
-                <Badge variant="default">{serviceStatus.service_status}</Badge>
               </div>
             </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Optimus Real-time Data */}
-      {optimusData && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <TrendingUp className="h-5 w-5" />
-              Optimus Real-time Collections
-            </CardTitle>
-            <CardDescription>
-              Live data from Optimus API - {optimusData.total_transactions} total transactions
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-              <div className="flex items-center">
-                <DollarSign className="h-8 w-8 text-green-600" />
-                <div className="ml-4">
-                  <p className="text-sm font-medium text-muted-foreground">Total Transactions</p>
-                  <p className="text-2xl font-bold">{optimusData.total_transactions}</p>
-                </div>
-              </div>
-              
-              <div className="flex items-center">
-                <CheckCircle className="h-8 w-8 text-green-600" />
-                <div className="ml-4">
-                  <p className="text-sm font-medium text-muted-foreground">Completed</p>
-                  <p className="text-2xl font-bold">
-                    {optimusData.data?.data?.filter((t: any) => t.transaction_status === 'completed').length || 0}
-                  </p>
-                </div>
-              </div>
-              
-              <div className="flex items-center">
-                <Clock className="h-8 w-8 text-yellow-600" />
-                <div className="ml-4">
-                  <p className="text-sm font-medium text-muted-foreground">Pending</p>
-                  <p className="text-2xl font-bold">
-                    {optimusData.data?.data?.filter((t: any) => t.transaction_status === 'pending-approval').length || 0}
-                  </p>
-                </div>
-              </div>
-              
-              <div className="flex items-center">
-                <BarChart3 className="h-8 w-8 text-blue-600" />
-                <div className="ml-4">
-                  <p className="text-sm font-medium text-muted-foreground">Total Amount</p>
-                  <p className="text-2xl font-bold">
-                    {optimusData.data?.data?.reduce((sum: number, t: any) => sum + parseInt(t.total_amount || 0), 0).toLocaleString()} UGX
-                  </p>
-                </div>
-              </div>
-            </div>
-            
-            {/* Recent Transactions */}
-            <div className="mt-6">
-              <h4 className="text-lg font-semibold mb-3">Recent Transactions</h4>
-              <div className="space-y-2 max-h-60 overflow-y-auto">
-                {optimusData.data?.data?.slice(0, 10).map((transaction: any, index: number) => (
-                  <div key={index} className="flex items-center justify-between p-3 border rounded-lg">
-                    <div className="flex items-center gap-3">
-                      <div className="flex items-center gap-2">
-                        {transaction.transaction_status === 'completed' ? 
-                          <CheckCircle className="h-4 w-4 text-green-500" /> :
-                          <Clock className="h-4 w-4 text-yellow-500" />
-                        }
-                        <span className="font-mono text-sm">
-                          {transaction.app_transaction_uid?.slice(0, 8)}...
-                        </span>
-                      </div>
-                      <span className="text-sm text-muted-foreground">
-                        {transaction.debit_phone_number}
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-3">
-                      <span className="font-medium">
-                        {parseInt(transaction.total_amount || 0).toLocaleString()} UGX
-                      </span>
-                      <Badge variant={
-                        transaction.transaction_status === 'completed' ? 'default' : 'secondary'
-                      }>
-                        {transaction.transaction_status}
-                      </Badge>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* API Key Configuration */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Configure Optimus API Key</CardTitle>
-          <CardDescription>
-            Enter your Optimus collections API key to enable monitoring
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="flex gap-2">
-            <Input
-              type="password"
-              placeholder="Enter Optimus API key..."
-              value={apiKey}
-              onChange={(e) => setApiKey(e.target.value)}
-              className="flex-1"
-            />
+            <div className="flex items-center gap-3">
             <Button
-              onClick={configureApiKey}
-              disabled={configuring || !apiKey.trim()}
-            >
-              {configuring ? 'Configuring...' : 'Configure'}
+                onClick={refreshData}
+                disabled={loadingOptimus}
+                variant="outline"
+                size="sm"
+                className="border-gray-300 hover:bg-gray-50"
+              >
+                <RefreshCw className={`h-4 w-4 mr-2 ${loadingOptimus ? 'animate-spin' : ''}`} />
+                Refresh Data
+              </Button>
+              <Button size="sm" className="bg-blue-600 hover:bg-blue-700" onClick={exportToCSV}>
+                <Download className="h-4 w-4 mr-2" />
+                Export CSV
             </Button>
+            </div>
           </div>
-        </CardContent>
-      </Card>
+        </div>
 
-      {/* Summary Cards */}
-      {collections && (
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <Card>
+        <div className="p-4 space-y-4">
+          {/* Refactored Statistics Cards */}
+          {optimusData && (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+              {/* Total Transactions */}
+              <Card className="border-0 shadow-sm bg-gradient-to-br from-blue-50 to-blue-100/50">
             <CardContent className="p-6">
-              <div className="flex items-center">
-                <DollarSign className="h-8 w-8 text-green-600" />
-                <div className="ml-4">
-                  <p className="text-sm font-medium text-muted-foreground">Total Amount</p>
-                  <p className="text-2xl font-bold">{collections.formatted_total_amount}</p>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-medium text-blue-600 mb-1">Total Transactions</p>
+                      <p className="text-3xl font-bold text-blue-900">{optimusData.total_transactions}</p>
+                      <p className="text-xs text-blue-600 mt-1">All time</p>
+                    </div>
+                    <div className="p-3 bg-blue-200 rounded-full">
+                      <Activity className="h-6 w-6 text-blue-700" />
                 </div>
               </div>
             </CardContent>
           </Card>
           
-          <Card>
+              {/* Transaction Status */}
+              <Card className="border-0 shadow-sm bg-gradient-to-br from-gray-50 to-gray-100/50">
             <CardContent className="p-6">
-              <div className="flex items-center">
-                <BarChart3 className="h-8 w-8 text-blue-600" />
-                <div className="ml-4">
-                  <p className="text-sm font-medium text-muted-foreground">Total Collections</p>
-                  <p className="text-2xl font-bold">{collections.summary.total_collections}</p>
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <CheckCircle className="h-4 w-4 text-green-600" />
+                        <span className="text-sm font-medium text-gray-700">Completed</span>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-xl font-bold text-green-900">
+                          {optimusData.data?.data?.filter((t: any) => t.transaction_status === 'completed').length || 0}
+                        </p>
+                        <p className="text-xs text-green-600">
+                          {optimusData.total_transactions > 0 ? 
+                            Math.round((optimusData.data?.data?.filter((t: any) => t.transaction_status === 'completed').length || 0) / optimusData.total_transactions * 100) : 0}%
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <X className="h-4 w-4 text-red-600" />
+                        <span className="text-sm font-medium text-gray-700">Cancelled</span>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-xl font-bold text-red-900">
+                          {optimusData.data?.data?.filter((t: any) => t.transaction_status !== 'completed').length || 0}
+                        </p>
+                        <p className="text-xs text-red-600">Incomplete transactions</p>
+                      </div>
                 </div>
               </div>
             </CardContent>
           </Card>
           
-          <Card>
+              {/* Financial Overview */}
+              <Card className="border-0 shadow-sm bg-gradient-to-br from-purple-50 to-purple-100/50">
             <CardContent className="p-6">
-              <div className="flex items-center">
-                <CheckCircle className="h-8 w-8 text-green-600" />
-                <div className="ml-4">
-                  <p className="text-sm font-medium text-muted-foreground">Successful</p>
-                  <p className="text-2xl font-bold">{collections.summary.successful_collections}</p>
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <DollarSign className="h-4 w-4 text-purple-600" />
+                        <span className="text-sm font-medium text-gray-700">Completed Payments</span>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-2xl font-bold text-purple-900">
+                          {(optimusData.data?.data?.filter((t: any) => t.transaction_status === 'completed').reduce((sum: number, t: any) => sum + parseInt(t.total_amount || 0), 0) || 0).toLocaleString()}
+                        </p>
+                        <p className="text-xs text-purple-600">UGX</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <X className="h-4 w-4 text-red-600" />
+                        <span className="text-sm font-medium text-gray-700">Cancelled</span>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-lg font-bold text-red-900">
+                          {optimusData.data?.data?.filter((t: any) => t.transaction_status !== 'completed').length || 0}
+                        </p>
+                        <p className="text-xs text-red-600">transactions</p>
+                      </div>
                 </div>
               </div>
             </CardContent>
           </Card>
           
-          <Card>
+              {/* Performance Metrics */}
+              <Card className="border-0 shadow-sm bg-gradient-to-br from-emerald-50 to-emerald-100/50">
             <CardContent className="p-6">
-              <div className="flex items-center">
-                <Clock className="h-8 w-8 text-yellow-600" />
-                <div className="ml-4">
-                  <p className="text-sm font-medium text-muted-foreground">Pending</p>
-                  <p className="text-2xl font-bold">{collections.summary.pending_collections}</p>
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <TrendingUp className="h-4 w-4 text-emerald-600" />
+                        <span className="text-sm font-medium text-gray-700">Success Rate</span>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-2xl font-bold text-emerald-900">
+                          {optimusData.total_transactions > 0 ? 
+                            Math.round((optimusData.data?.data?.filter((t: any) => t.transaction_status === 'completed').length || 0) / optimusData.total_transactions * 100) : 0}%
+                        </p>
+                        <p className="text-xs text-emerald-600">Completion rate</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <BarChart3 className="h-4 w-4 text-blue-600" />
+                        <span className="text-sm font-medium text-gray-700">Volume</span>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-lg font-bold text-blue-900">
+                          {(optimusData.data?.data?.reduce((sum: number, t: any) => sum + parseInt(t.total_amount || 0), 0) || 0).toLocaleString()}
+                        </p>
+                        <p className="text-xs text-blue-600">UGX processed</p>
+                      </div>
                 </div>
               </div>
             </CardContent>
@@ -534,182 +564,348 @@ const CollectionsDashboard: React.FC = () => {
         </div>
       )}
 
-      {/* Filters */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Filter className="h-5 w-5" />
-            Filters
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-            <div>
-              <Label htmlFor="limit">Limit</Label>
-              <Select value={limit.toString()} onValueChange={(value) => setLimit(parseInt(value))}>
-                <SelectTrigger>
+          {/* Enhanced Transactions Table */}
+          {optimusData && (
+            <Card className="border-0 shadow-sm">
+              {/* Filters and Controls */}
+              <CardHeader className="pb-3">
+                <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
+                  <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto">
+                    {/* Search */}
+                    <div className="relative">
+                      <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+                      <Input
+                        placeholder="Search transactions..."
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                        className="pl-10 w-full sm:w-64"
+                      />
+                    </div>
+                    
+                    {/* Status Filter */}
+                    <Select value={statusFilter} onValueChange={setStatusFilter}>
+                      <SelectTrigger className="w-full sm:w-40">
+                        <SelectValue placeholder="Status" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All Status</SelectItem>
+                        <SelectItem value="completed">Completed</SelectItem>
+                        <SelectItem value="cancelled">Cancelled</SelectItem>
+                      </SelectContent>
+                    </Select>
+
+                    {/* Clear Filters */}
+                    {(searchTerm || statusFilter !== 'all') && (
+                      <Button variant="outline" size="sm" onClick={clearFilters}>
+                        <X className="h-4 w-4 mr-2" />
+                        Clear
+                      </Button>
+                    )}
+                  </div>
+
+                  <div className="flex items-center gap-3">
+                    {/* Items per page */}
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm text-gray-600">Show:</span>
+                      <Select value={itemsPerPage.toString()} onValueChange={handleItemsPerPageChange}>
+                        <SelectTrigger className="w-20">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
+                          <SelectItem value="5">5</SelectItem>
+                          <SelectItem value="10">10</SelectItem>
                   <SelectItem value="25">25</SelectItem>
                   <SelectItem value="50">50</SelectItem>
-                  <SelectItem value="100">100</SelectItem>
                 </SelectContent>
               </Select>
             </div>
             
-            <div>
-              <Label htmlFor="startDate">Start Date</Label>
-              <Input
-                id="startDate"
-                type="date"
-                value={startDate}
-                onChange={(e) => setStartDate(e.target.value)}
-              />
-            </div>
-            
-            <div>
-              <Label htmlFor="endDate">End Date</Label>
-              <Input
-                id="endDate"
-                type="date"
-                value={endDate}
-                onChange={(e) => setEndDate(e.target.value)}
-              />
-            </div>
-            
-            <div className="flex items-end">
-              <Button
-                onClick={() => setUseCache(!useCache)}
-                variant={useCache ? "default" : "outline"}
-                className="w-full"
-              >
-                {useCache ? 'Using Cache' : 'Use Cache'}
-              </Button>
             </div>
           </div>
-        </CardContent>
-      </Card>
-
-      {/* Collections Table */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Collections</CardTitle>
-          <CardDescription>
-            Mobile money collection transactions from Optimus
-          </CardDescription>
         </CardHeader>
-        <CardContent>
-          {loading ? (
-            <div className="flex items-center justify-center py-8">
-              <RefreshCw className="h-8 w-8 animate-spin" />
-              <span className="ml-2">Loading collections...</span>
-            </div>
-          ) : collections && collections.collections.length > 0 ? (
+
+              <CardContent className="p-0">
             <div className="overflow-x-auto">
               <table className="w-full">
-                <thead>
-                  <tr className="border-b">
-                    <th className="text-left p-2">ID</th>
-                    <th className="text-left p-2">Amount</th>
-                    <th className="text-left p-2">Status</th>
-                    <th className="text-left p-2">Provider</th>
-                    <th className="text-left p-2">Phone</th>
-                    <th className="text-left p-2">Created</th>
-                    <th className="text-left p-2">Completed</th>
+                    <thead className="bg-gray-50 border-b">
+                      <tr>
+                        <th 
+                          className="text-left p-3 text-xs font-medium text-gray-600 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
+                          onClick={() => handleSort('transaction_date')}
+                        >
+                          <div className="flex items-center gap-2">
+                            Date
+                            {getSortIcon('transaction_date')}
+                          </div>
+                        </th>
+                        <th className="text-left p-3 text-xs font-medium text-gray-600">Status</th>
+                        <th className="text-left p-3 text-xs font-medium text-gray-600">Transaction ID</th>
+                        <th className="text-left p-3 text-xs font-medium text-gray-600">User</th>
+                        <th className="text-left p-3 text-xs font-medium text-gray-600">Mobile Number</th>
+                        <th className="text-left p-3 text-xs font-medium text-gray-600">Network</th>
+                        <th className="text-left p-3 text-xs font-medium text-gray-600">Amount</th>
+                        <th className="text-right p-3 text-xs font-medium text-gray-600">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {collections.collections.map((collection) => (
-                    <tr key={collection.id} className="border-b hover:bg-muted/50">
-                      <td className="p-2">
-                        <div className="font-mono text-sm">
-                          {collection.transaction_uid.slice(0, 8)}...
+                      {getPaginatedData().map((transaction: any, index: number) => (
+                        <tr key={index} className="border-b hover:bg-gray-50 transition-colors">
+                          <td className="p-3">
+                            <div className="text-xs text-gray-900">
+                              {formatDate(transaction.transaction_date || transaction.created_at)}
                         </div>
                       </td>
-                      <td className="p-2 font-medium">
-                        {collection.formatted_amount}
-                      </td>
-                      <td className="p-2">
+                          <td className="p-3">
                         <div className="flex items-center gap-2">
-                          {getStatusIcon(collection.status)}
-                          <Badge variant={
-                            collection.status_badge.color === 'green' ? 'default' :
-                            collection.status_badge.color === 'yellow' ? 'secondary' :
-                            collection.status_badge.color === 'red' ? 'destructive' : 'outline'
-                          }>
-                            {collection.status_badge.text}
+                              <div className={`p-1 rounded-full ${
+                                transaction.transaction_status === 'completed' 
+                                  ? 'bg-green-100' 
+                                  : 'bg-red-100'
+                              }`}>
+                                {transaction.transaction_status === 'completed' ? 
+                                  <CheckCircle className="h-3 w-3 text-green-600" /> :
+                                  <X className="h-3 w-3 text-red-600" />
+                                }
+                              </div>
+                              <Badge 
+                                className={`text-xs font-normal ${
+                                  transaction.transaction_status === 'completed' 
+                                    ? 'bg-green-100 text-green-600 border-green-200 hover:bg-green-200' 
+                                    : 'bg-red-100 text-red-600 border-red-200 hover:bg-red-200'
+                                }`}
+                              >
+                                {transaction.transaction_status === 'completed' ? 'Completed' : 'Cancelled'}
                           </Badge>
                         </div>
                       </td>
-                      <td className="p-2">
-                        <div className="flex items-center gap-2">
-                          {getProviderIcon(collection.provider)}
-                          <Badge variant="outline">
-                            {collection.provider_badge.text}
-                          </Badge>
+                          <td className="p-3">
+                            <div className="font-mono text-xs text-gray-900">
+                              {transaction.app_transaction_uid?.slice(0, 12)}...
+                            </div>
+                          </td>
+                          <td className="p-3">
+                            <div className="text-xs font-medium text-gray-900">
+                              {getCustomerName(transaction.app_transaction_uid)}
+                            </div>
+                          </td>
+                          <td className="p-3">
+                            <div className="text-xs font-medium text-gray-900">
+                              {transaction.debit_phone_number}
                         </div>
                       </td>
-                      <td className="p-2 font-mono text-sm">
-                        {collection.phone}
+                          <td className="p-3">
+                            <div className="text-xs text-gray-600">
+                              {getNetworkPill(getMobileNetwork(transaction))}
+                            </div>
                       </td>
-                      <td className="p-2 text-sm text-muted-foreground">
-                        {formatDate(collection.created_at)}
+                          <td className="p-3">
+                            <div className="font-semibold text-xs text-gray-900">
+                              {parseInt(transaction.total_amount || 0).toLocaleString()} UGX
+                            </div>
                       </td>
-                      <td className="p-2 text-sm text-muted-foreground">
-                        {collection.completed_at ? formatDate(collection.completed_at) : '-'}
+                          <td className="p-3 text-right">
+                            <Button 
+                              variant="ghost" 
+                              size="sm" 
+                              className="h-6 w-6 p-0"
+                              onClick={() => openTransactionModal(transaction)}
+                            >
+                              <Eye className="h-3 w-3" />
+                            </Button>
                       </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
-          ) : (
-            <Alert>
-              <AlertCircle className="h-4 w-4" />
-              <AlertDescription>
-                No collections found. Make sure the API key is configured and try refreshing.
-              </AlertDescription>
-            </Alert>
-          )}
-        </CardContent>
-      </Card>
 
-      {/* Statistics */}
-      {stats && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <TrendingUp className="h-5 w-5" />
-              Statistics ({stats.period_days} days)
-            </CardTitle>
-            <CardDescription>
-              Daily collection statistics from {stats.start_date} to {stats.end_date}
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              {stats.daily_stats.map((day) => (
-                <div key={day.date} className="flex items-center justify-between p-3 border rounded-lg">
-                  <div className="flex items-center gap-4">
-                    <Calendar className="h-4 w-4 text-muted-foreground" />
-                    <span className="font-medium">{day.date}</span>
+                {/* Pagination */}
+                <div className="flex items-center justify-between p-4 border-t bg-gray-50">
+                  <div className="text-sm text-gray-600">
+                    Showing {((currentPage - 1) * itemsPerPage) + 1} to {Math.min(currentPage * itemsPerPage, getFilteredAndSortedData().length)} of {getFilteredAndSortedData().length} transactions
                   </div>
-                  <div className="flex items-center gap-4 text-sm">
-                    <span className="text-green-600">✓ {day.completed}</span>
-                    <span className="text-yellow-600">⏳ {day.pending}</span>
-                    <span className="text-red-600">✗ {day.failed}</span>
-                    <span className="font-medium">
-                      {formatAmount(day.total_amount)}
-                    </span>
+                  
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handlePageChange(currentPage - 1)}
+                      disabled={currentPage === 1}
+                    >
+                      <ChevronLeft className="h-4 w-4" />
+                    </Button>
+                    
+                    <div className="flex items-center gap-1">
+                      {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                        const page = i + 1;
+                        return (
+                          <Button
+                            key={page}
+                            variant={currentPage === page ? "default" : "outline"}
+                            size="sm"
+                            onClick={() => handlePageChange(page)}
+                            className="w-8 h-8 p-0"
+                          >
+                            {page}
+                          </Button>
+                        );
+                      })}
+                    </div>
+                    
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handlePageChange(currentPage + 1)}
+                      disabled={currentPage === totalPages}
+                    >
+                      <ChevronRight className="h-4 w-4" />
+                    </Button>
                   </div>
                 </div>
-              ))}
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Loading State */}
+          {!optimusData && (
+            <div className="flex items-center justify-center py-12">
+              <div className="text-center">
+                <RefreshCw className="h-8 w-8 animate-spin text-gray-400 mx-auto mb-4" />
+                <p className="text-gray-500">Loading transaction data...</p>
+              </div>
             </div>
-          </CardContent>
-        </Card>
-      )}
+          )}
+        </div>
       </div>
+
+      {/* Transaction Details Modal */}
+      {isModalOpen && selectedTransaction && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-2xl max-w-md w-full max-h-[85vh] overflow-hidden">
+            {/* Header */}
+            <div className="bg-gradient-to-r from-blue-600 to-indigo-600 px-4 py-3 text-white">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <div className="p-1 bg-white/20 rounded-lg">
+                    <CheckCircle className="h-4 w-4" />
+                  </div>
+                  <div>
+                    <h2 className="text-sm font-semibold">Transaction Details</h2>
+                    <p className="text-xs text-blue-100">
+                      {selectedTransaction.transaction_status === 'completed' ? 'Completed' : 'Cancelled'}
+                    </p>
+                  </div>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={closeTransactionModal}
+                  className="h-7 w-7 p-0 text-white hover:bg-white/20"
+                >
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+            
+            {/* Content */}
+            <div className="p-4 space-y-3 max-h-[calc(85vh-120px)] overflow-y-auto">
+              {/* Amount Card */}
+              <div className="bg-gradient-to-r from-green-50 to-emerald-50 border border-green-200 rounded-lg p-3">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-xs font-medium text-green-700">Amount</p>
+                    <p className="text-lg font-bold text-green-800">
+                      {parseInt(selectedTransaction.total_amount || 0).toLocaleString()} UGX
+                    </p>
+                  </div>
+                  <div className="p-2 bg-green-100 rounded-full">
+                    <DollarSign className="h-4 w-4 text-green-600" />
+                  </div>
+                </div>
+              </div>
+
+              {/* Transaction Info Grid */}
+              <div className="grid grid-cols-2 gap-3">
+                {/* Transaction ID */}
+                <div className="bg-gray-50 rounded-lg p-3">
+                  <p className="text-xs font-medium text-gray-600 mb-1">Transaction ID</p>
+                  <p className="text-xs font-mono text-gray-800 break-all">
+                    {selectedTransaction.app_transaction_uid}
+                  </p>
+                </div>
+
+                {/* User */}
+                <div className="bg-gray-50 rounded-lg p-3">
+                  <p className="text-xs font-medium text-gray-600 mb-1">User</p>
+                  <p className="text-xs text-gray-800 truncate">
+                    {getCustomerName(selectedTransaction.app_transaction_uid)}
+                  </p>
+                </div>
+              </div>
+
+              {/* Mobile & Network */}
+              <div className="bg-gray-50 rounded-lg p-3">
+                <div className="flex items-center justify-between mb-2">
+                  <p className="text-xs font-medium text-gray-600">Mobile Number</p>
+                  <div className="flex items-center gap-1">
+                    <span className="text-xs text-gray-500">Network:</span>
+                    {getNetworkPill(getMobileNetwork(selectedTransaction))}
+                  </div>
+                </div>
+                <p className="text-sm font-mono text-gray-800">{selectedTransaction.debit_phone_number}</p>
+              </div>
+
+              {/* Dates */}
+              <div className="grid grid-cols-2 gap-3">
+                <div className="bg-gray-50 rounded-lg p-3">
+                  <p className="text-xs font-medium text-gray-600 mb-1">Transaction Date</p>
+                  <p className="text-xs text-gray-800">
+                    {formatDate(selectedTransaction.transaction_date || selectedTransaction.created_at)}
+                  </p>
+                </div>
+                {selectedTransaction.completed_at && (
+                  <div className="bg-gray-50 rounded-lg p-3">
+                    <p className="text-xs font-medium text-gray-600 mb-1">Completed Date</p>
+                    <p className="text-xs text-gray-800">
+                      {formatDate(selectedTransaction.completed_at)}
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              {/* Additional Info */}
+              {(selectedTransaction.description || selectedTransaction.reference) && (
+                <div className="space-y-2">
+                  {selectedTransaction.description && (
+                    <div className="bg-gray-50 rounded-lg p-3">
+                      <p className="text-xs font-medium text-gray-600 mb-1">Description</p>
+                      <p className="text-xs text-gray-800">{selectedTransaction.description}</p>
+                    </div>
+                  )}
+                  {selectedTransaction.reference && (
+                    <div className="bg-gray-50 rounded-lg p-3">
+                      <p className="text-xs font-medium text-gray-600 mb-1">Reference</p>
+                      <p className="text-xs text-gray-800">{selectedTransaction.reference}</p>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+            
+            {/* Footer */}
+            <div className="border-t bg-gray-50 px-4 py-3">
+              <Button 
+                variant="outline" 
+                onClick={closeTransactionModal} 
+                size="sm"
+                className="w-full"
+              >
+                Close
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </DashboardLayout>
   );
 };

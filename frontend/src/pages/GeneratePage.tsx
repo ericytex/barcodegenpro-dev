@@ -51,35 +51,38 @@ export default function GeneratePage() {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
-            {/* Device Selection */}
-            <div className="space-y-4">
-              <div className="flex items-center gap-2">
-                <Smartphone className="w-4 h-4 text-primary" />
-                <h4 className="font-semibold">Device Selection</h4>
+            {/* Device Selection - Hidden */}
+            {false && (
+              <div className="space-y-4">
+                <div className="flex items-center gap-2">
+                  <Smartphone className="w-4 h-4 text-primary" />
+                  <h4 className="font-semibold">Device Selection</h4>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="device-selector">Select Device Type (Optional)</Label>
+                  <DeviceSelector
+                    value={selectedDevice}
+                    onChange={handleDeviceChange}
+                    placeholder="Choose a device type for specialized barcode generation..."
+                    disabled={true}
+                  />
+                  {selectedDevice && (
+                    <div className="text-sm text-muted-foreground p-3 bg-muted/30 rounded-md">
+                      <strong>Selected Device:</strong> {selectedDevice.brand} {selectedDevice.name}
+                      <br />
+                      <strong>Type:</strong> {selectedDevice.device_type}
+                      <br />
+                      <strong>Model:</strong> {selectedDevice.model_code}
+                      <br />
+                      <strong>Default D/N:</strong> {selectedDevice.default_dn}
+                    </div>
+                  )}
+                  <p className="text-xs text-muted-foreground">
+                    Device selection is temporarily disabled. Coming in the next version.
+                  </p>
+                </div>
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="device-selector">Select Device Type (Optional)</Label>
-                <DeviceSelector
-                  value={selectedDevice}
-                  onChange={handleDeviceChange}
-                  placeholder="Choose a device type for specialized barcode generation..."
-                />
-                {selectedDevice && (
-                  <div className="text-sm text-muted-foreground p-3 bg-muted/30 rounded-md">
-                    <strong>Selected Device:</strong> {selectedDevice.brand} {selectedDevice.name}
-                    <br />
-                    <strong>Type:</strong> {selectedDevice.device_type}
-                    <br />
-                    <strong>Model:</strong> {selectedDevice.model_code}
-                    <br />
-                    <strong>Default D/N:</strong> {selectedDevice.default_dn}
-                  </div>
-                )}
-                <p className="text-xs text-muted-foreground">
-                  Select a device type to generate specialized barcodes. Leave empty for default generation.
-                </p>
-              </div>
-            </div>
+            )}
 
             {/* Generation Settings */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">

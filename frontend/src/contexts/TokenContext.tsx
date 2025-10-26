@@ -26,7 +26,7 @@ export function TokenProvider({ children }: { children: ReactNode }) {
   const [balance, setBalance] = useState<number | null>(null);
   const [tokenAccount, setTokenAccount] = useState<TokenBalance | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const { token, isAuthenticated } = useAuth();
+  const { token, isAuthenticated, handleSessionExpiration } = useAuth();
 
   const refreshBalance = async () => {
     if (!isAuthenticated || !token) {
@@ -49,11 +49,18 @@ export function TokenProvider({ children }: { children: ReactNode }) {
         const data = await response.json();
         setBalance(data.balance);
         setTokenAccount(data);
+      } else if (response.status === 401 || response.status === 403) {
+        // Session expired
+        console.log('Token balance fetch failed - session expired');
+        handleSessionExpiration();
       } else {
         console.error('Failed to fetch token balance');
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error fetching token balance:', error);
+      if (error.message === 'SESSION_EXPIRED') {
+        handleSessionExpiration();
+      }
     } finally {
       setIsLoading(false);
     }
@@ -83,6 +90,12 @@ export function TokenProvider({ children }: { children: ReactNode }) {
       const data = await response.json();
 
       if (!response.ok) {
+        if (response.status === 401 || response.status === 403) {
+          // Session expired
+          console.log('Token purchase failed - session expired');
+          handleSessionExpiration();
+          return;
+        }
         throw new Error(data.message || 'Purchase failed');
       }
 
@@ -92,6 +105,10 @@ export function TokenProvider({ children }: { children: ReactNode }) {
       return data;
     } catch (error: any) {
       console.error('Token purchase error:', error);
+      if (error.message === 'SESSION_EXPIRED') {
+        handleSessionExpiration();
+        return;
+      }
       throw error;
     }
   };

@@ -494,22 +494,38 @@ class DatabaseManager:
     
     def insert_barcode_record(self, record: BarcodeRecord) -> int:
         """Insert a new barcode record and return the ID"""
-        with get_connection_context() as conn:
-            cursor = conn.cursor()
-            cursor.execute("""
-                INSERT INTO barcode_files (
-                    filename, file_path, archive_path, file_type, file_size,
-                    created_at, archived_at, generation_session, imei, box_id,
-                    model, product, color, dn
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """, (
-                record.filename, record.file_path, record.archive_path,
-                record.file_type, record.file_size, record.created_at,
-                record.archived_at, record.generation_session, record.imei,
-                record.box_id, record.model, record.product, record.color, record.dn
-            ))
-            conn.commit()
-            return cursor.lastrowid
+        print(f"🔍 DatabaseManager.insert_barcode_record called for {record.filename}")
+        
+        # Skip connection pool entirely and use direct connection for now
+        print(f"🔍 Using direct connection (bypassing pool) for {record.filename}...")
+        try:
+            with sqlite3.connect(self.db_path, timeout=5) as conn:
+                print(f"🔍 Got direct connection for {record.filename}")
+                cursor = conn.cursor()
+                print(f"🔍 Executing INSERT for {record.filename}...")
+                cursor.execute("""
+                    INSERT INTO barcode_files (
+                        filename, file_path, archive_path, file_type, file_size,
+                        created_at, archived_at, generation_session, imei, box_id,
+                        model, product, color, dn
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    record.filename, record.file_path, record.archive_path,
+                    record.file_type, record.file_size, record.created_at,
+                    record.archived_at, record.generation_session, record.imei,
+                    record.box_id, record.model, record.product, record.color, record.dn
+                ))
+                print(f"🔍 Committing transaction for {record.filename}...")
+                conn.commit()
+                record_id = cursor.lastrowid
+                print(f"🔍 Successfully inserted {record.filename} with ID {record_id}")
+                return record_id
+        except Exception as e:
+            print(f"❌ Direct connection failed for {record.filename}: {e}")
+            print(f"❌ Error type: {type(e).__name__}")
+            import traceback
+            print(f"❌ Traceback: {traceback.format_exc()}")
+            raise e
     
     def insert_generation_session(self, session_id: str, created_at: str, 
                                 total_files: int, png_count: int, pdf_count: int,
@@ -788,11 +804,20 @@ class DatabaseManager:
         """Insert a new feature record and return the ID"""
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.cursor()
+            # Ensure upvotes and status have defaults if None
+            upvotes = feature.upvotes if feature.upvotes is not None else 0
+            status = feature.status if feature.status else 'Suggestion'
+            submitted_by = feature.submitted_by if feature.submitted_by else 1
+            
+            # Debug logging
+            print(f"DEBUG insert_feature: upvotes={upvotes}, status={status}, submitted_by={submitted_by}")
+            
             cursor.execute("""
                 INSERT INTO features (title, description, upvotes, status, submitted_by)
                 VALUES (?, ?, ?, ?, ?)
-            """, (feature.title, feature.description, feature.upvotes, feature.status, feature.submitted_by))
+            """, (feature.title, feature.description, upvotes, status, submitted_by))
             conn.commit()
+            print(f"DEBUG insert_feature: Inserted with ID {cursor.lastrowid}")
             return cursor.lastrowid
 
     def get_all_features(self) -> List[Dict[str, Any]]:
@@ -802,6 +827,35 @@ class DatabaseManager:
             cursor = conn.cursor()
             cursor.execute("SELECT * FROM features ORDER BY created_at DESC")
             return [dict(row) for row in cursor.fetchall()]
+    
+    def update_feature(self, feature_id: int, updates: Dict[str, Any]) -> bool:
+        """Update a feature record"""
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            # Build dynamic update query
+            fields = []
+            values = []
+            for key, value in updates.items():
+                if value is not None:
+                    fields.append(f"{key} = ?")
+                    values.append(value)
+            
+            if not fields:
+                return False
+            
+            values.append(feature_id)
+            query = f"UPDATE features SET {', '.join(fields)} WHERE id = ?"
+            cursor.execute(query, values)
+            conn.commit()
+            return cursor.rowcount > 0
+    
+    def delete_feature(self, feature_id: int) -> bool:
+        """Delete a feature record"""
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute("DELETE FROM features WHERE id = ?", (feature_id,))
+            conn.commit()
+            return cursor.rowcount > 0
 
     # Device Brand CRUD Methods
     def insert_device_brand(self, brand: DeviceBrandRecord) -> int:

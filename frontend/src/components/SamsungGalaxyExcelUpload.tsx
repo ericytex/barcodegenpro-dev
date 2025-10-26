@@ -496,7 +496,7 @@ const SamsungGalaxyExcelUpload: React.FC<SamsungGalaxyExcelUploadProps> = ({
                     </div>
                   </div>
                 ) : (
-                  // Individual PNG Files (legacy)
+                  // Individual PNG Files (preview only)
                   <div className="space-y-4 max-h-96 overflow-y-auto">
                     {generatedBarcodes.map((barcode, index) => (
                       <div key={index} className="flex items-center justify-between p-3 border rounded-lg">
@@ -513,16 +513,11 @@ const SamsungGalaxyExcelUpload: React.FC<SamsungGalaxyExcelUploadProps> = ({
                             <Eye className="mr-2 h-4 w-4" />
                             Preview
                           </Button>
-                          <Button
-                            onClick={() => downloadBarcode(barcode.filename)}
-                            size="sm"
-                          >
-                            <Download className="mr-2 h-4 w-4" />
-                            Download
-                          </Button>
+                          <Badge variant="secondary">PNG</Badge>
                         </div>
                       </div>
                     ))}
+                    <p className="text-xs text-muted-foreground text-center">Individual PNG files are included in the PDF collection</p>
                   </div>
                 )}
               </CardContent>

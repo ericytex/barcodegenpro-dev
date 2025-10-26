@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -10,6 +10,7 @@ import { useAuth } from '@/contexts/AuthContext';
 
 export default function RegisterPage() {
   const { register, isLoading: authLoading } = useAuth();
+  const navigate = useNavigate();
   const [email, setEmail] = useState('');
   const [username, setUsername] = useState('');
   const [fullName, setFullName] = useState('');
@@ -37,6 +38,7 @@ export default function RegisterPage() {
 
     try {
       await register(email, username, password, fullName || undefined);
+      navigate('/dashboard');
     } catch (err: any) {
       setError(err.message || 'Registration failed');
     } finally {

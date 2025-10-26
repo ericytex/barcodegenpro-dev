@@ -46,12 +46,71 @@ class BarcodeService:
         """Archive existing files to timestamped folders instead of deleting them"""
         print("📦 Archiving existing files...")
         
-        # Check if there are any files to archive
-        png_files = glob.glob(os.path.join(self.output_dir, "*.png"))
-        pdf_files = glob.glob(os.path.join(self.pdf_dir, "*.pdf"))
-        
-        if not png_files and not pdf_files:
-            print("✅ No files to archive - directories are already clean")
+        try:
+            # Check if there are any files to archive
+            png_files = glob.glob(os.path.join(self.output_dir, "*.png"))
+            pdf_files = glob.glob(os.path.join(self.pdf_dir, "*.pdf"))
+            
+            print(f"📁 Found {len(png_files)} PNG files and {len(pdf_files)} PDF files to archive")
+            
+            if not png_files and not pdf_files:
+                print("✅ No files to archive - directories are already clean")
+                return {
+                    "session_id": None,
+                    "archived_files": [],
+                    "total_files": 0,
+                    "png_count": 0,
+                    "pdf_count": 0,
+                    "total_size": 0
+                }
+            
+            # Quick archive: just move files to timestamped folder
+            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+            archive_dir = f"archives/session_{timestamp}"
+            
+            # Create archive directory
+            os.makedirs(archive_dir, exist_ok=True)
+            
+            archived_files = []
+            total_size = 0
+            
+            # Move PNG files
+            for png_file in png_files:
+                try:
+                    filename = os.path.basename(png_file)
+                    archive_path = os.path.join(archive_dir, filename)
+                    os.rename(png_file, archive_path)
+                    archived_files.append(filename)
+                    total_size += os.path.getsize(archive_path)
+                    print(f"📦 Archived: {filename}")
+                except Exception as e:
+                    print(f"⚠️ Warning: Could not archive {png_file}: {e}")
+            
+            # Move PDF files
+            for pdf_file in pdf_files:
+                try:
+                    filename = os.path.basename(pdf_file)
+                    archive_path = os.path.join(archive_dir, filename)
+                    os.rename(pdf_file, archive_path)
+                    archived_files.append(filename)
+                    total_size += os.path.getsize(archive_path)
+                    print(f"📦 Archived: {filename}")
+                except Exception as e:
+                    print(f"⚠️ Warning: Could not archive {pdf_file}: {e}")
+            
+            print(f"✨ Archive completed! Archived {len(archived_files)} files ({total_size} bytes)")
+            return {
+                "session_id": f"session_{timestamp}",
+                "archived_files": archived_files,
+                "total_files": len(archived_files),
+                "png_count": len(png_files),
+                "pdf_count": len(pdf_files),
+                "total_size": total_size
+            }
+            
+        except Exception as e:
+            print(f"⚠️ Warning: Archive process failed: {e}")
+            print("🔄 Continuing with barcode generation...")
             return {
                 "session_id": None,
                 "archived_files": [],
@@ -60,17 +119,6 @@ class BarcodeService:
                 "pdf_count": 0,
                 "total_size": 0
             }
-        
-        # Archive files using the archive manager
-        archive_result = self.archive_manager.archive_files(
-            barcode_dir=self.output_dir,
-            pdf_dir=self.pdf_dir,
-            generation_session=f"cleanup_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
-            file_metadata=file_metadata
-        )
-        
-        print("✨ Archive completed!")
-        return archive_result
 
     # ---------------- IMEI2 utilities -----------------
     def _load_used_imeis(self) -> Set[str]:
@@ -624,12 +672,18 @@ class BarcodeService:
                     print(f"🔄 Attempting to use first column '{first_col}' as IMEI...")
                     imei_col = first_col
         
+        print(f"🔄 Starting barcode generation for {len(items)} items...")
+        
         for index, item in enumerate(items):
             try:
+                print(f"📝 Processing item {index + 1}/{len(items)}")
+                
                 # Extract data from item using flexible column mapping
                 imei = str(item.get(imei_col, '')) if imei_col else str(item.get('imei', ''))
                 box_id = str(item.get(box_id_col, '')) if box_id_col and item.get(box_id_col) else str(item.get('box_id', '')) if item.get('box_id') else None
                 model = str(item.get(model_col, 'Unknown')) if model_col else str(item.get('model', 'Unknown'))
+                
+                print(f"🔍 Item {index + 1} data: IMEI='{imei}', Model='{model}', BoxID='{box_id}'")
                 
                 # Extract color from Product column if available, otherwise use color column
                 product_string = str(item.get(product_col, '')) if product_col else str(item.get('product', '')) if item.get('product') else ''
@@ -640,9 +694,11 @@ class BarcodeService:
                 
                 dn = str(item.get(dn_col, 'M8N7')) if dn_col else str(item.get('dn', 'M8N7'))
                 
+                print(f"🎨 Item {index + 1} styling: Color='{color}', DN='{dn}'")
+                
                 # Validate IMEI - use original value as-is without cleaning
                 if not imei or imei.lower() in ['nan', 'none', 'null', '']:
-                    print(f"Skipping item {index}: No IMEI found (value: '{imei}')")
+                    print(f"⚠️ Skipping item {index + 1}: No IMEI found (value: '{imei}')")
                     continue
                 
                 # Use the original IMEI exactly as it appears in Excel - no cleaning
@@ -650,8 +706,10 @@ class BarcodeService:
                 
                 # Only validate length, don't modify the IMEI
                 if len(imei) < 5:  # Reduced minimum length to be more flexible
-                    print(f"Skipping item {index}: IMEI too short ({len(imei)} characters): '{imei}'")
+                    print(f"⚠️ Skipping item {index + 1}: IMEI too short ({len(imei)} characters): '{imei}'")
                     continue
+                
+                print(f"✅ Item {index + 1} IMEI validated: '{imei}'")
                 
                 # Determine second barcode value and label
                 second_value = box_id
@@ -660,10 +718,14 @@ class BarcodeService:
                     # Prefer existing IMEI2 if provided
                     imei2 = str(item.get('imei2', '')) if item.get('imei2') else None
                     if not imei2:
+                        print(f"🔄 Generating unique IMEI2 for item {index + 1}")
                         imei2 = self.generate_unique_imei(imei, used_imeis)
                     second_value = imei2
                     second_label = "IMEI"
+                    print(f"📱 Item {index + 1} second barcode: '{second_value}' ({second_label})")
 
+                print(f"🎨 Creating barcode label for item {index + 1}...")
+                
                 # Generate barcode label
                 label = self.create_barcode_label(
                     imei=imei,
@@ -674,10 +736,14 @@ class BarcodeService:
                     second_label=second_label
                 )
                 
+                print(f"💾 Saving barcode label for item {index + 1}...")
+                
                 # Save the label
                 filename = f"barcode_label_{imei}_{index+1}.png"
                 filepath = os.path.join(self.output_dir, filename)
                 label.save(filepath, 'PNG', dpi=(300, 300))
+                
+                print(f"💾 Saving barcode record to database for item {index + 1}...")
                 
                 # Save barcode details immediately to database
                 file_size = os.path.getsize(filepath)
@@ -698,8 +764,17 @@ class BarcodeService:
                     dn=dn
                 )
                 
-                record_id = self.archive_manager.db_manager.insert_barcode_record(record)
-                print(f"✅ Saved barcode {filename} to database (ID: {record_id})")
+                print(f"🔍 Attempting database save for {filename}...")
+                try:
+                    record_id = self.archive_manager.db_manager.insert_barcode_record(record)
+                    print(f"✅ Saved barcode {filename} to database (ID: {record_id})")
+                except Exception as db_error:
+                    print(f"❌ Database save failed: {db_error}")
+                    print(f"❌ Error type: {type(db_error).__name__}")
+                    import traceback
+                    print(f"❌ Traceback: {traceback.format_exc()}")
+                    print("🔄 Continuing with file generation...")
+                    record_id = None
                 
                 generated_files.append(filename)
 
@@ -707,14 +782,18 @@ class BarcodeService:
                 if auto_generate_second_imei and second_value:
                     try:
                         self._append_imei_log(imei, second_value)
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        print(f"⚠️ Warning: Could not append to IMEI log: {e}")
                 
-                print(f"Generated: {filename}")
+                print(f"✅ Generated barcode {index + 1}/{len(items)}: {filename}")
                 
             except Exception as e:
-                print(f"Error generating barcode for item {index}: {e}")
+                print(f"❌ Error generating barcode for item {index + 1}: {e}")
+                import traceback
+                print(f"❌ Traceback: {traceback.format_exc()}")
+                continue
         
+        print(f"🎉 Barcode generation completed! Generated {len(generated_files)} files")
         return generated_files, session_id
     
     async def generate_barcodes_from_excel(self, file_path: str) -> tuple[List[str], str]:

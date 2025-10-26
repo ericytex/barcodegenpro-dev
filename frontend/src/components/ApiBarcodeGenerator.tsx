@@ -139,24 +139,30 @@ export function ApiBarcodeGenerator({ data, onBarcodeGenerated }: ApiBarcodeGene
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
-          {/* Device Override */}
-          <div className="space-y-2">
-            <Label className="flex items-center gap-2">
-              <Smartphone className="w-4 h-4" />
-              Device Override (Optional)
-            </Label>
-            <DeviceSelector
-              value={selectedDevice}
-              onChange={handleDeviceChange}
-              placeholder="Select a device to override model and D/N values..."
-            />
-            {selectedDevice && (
-              <div className="text-sm text-muted-foreground p-2 bg-muted/30 rounded">
-                <strong>Override Active:</strong> Model will be set to "{selectedDevice.model_code}" 
-                and D/N to "{selectedDevice.default_dn}" for all items.
-              </div>
-            )}
-          </div>
+          {/* Device Override - Hidden */}
+          {false && (
+            <div className="space-y-2">
+              <Label className="flex items-center gap-2">
+                <Smartphone className="w-4 h-4" />
+                Device Override (Optional)
+              </Label>
+              <DeviceSelector
+                value={selectedDevice}
+                onChange={handleDeviceChange}
+                placeholder="Select a device to override model and D/N values..."
+                disabled={true}
+              />
+              {selectedDevice && (
+                <div className="text-sm text-muted-foreground p-2 bg-muted/30 rounded">
+                  <strong>Override Active:</strong> Model will be set to "{selectedDevice.model_code}" 
+                  and D/N to "{selectedDevice.default_dn}" for all items.
+                </div>
+              )}
+              <p className="text-xs text-muted-foreground">
+                Device selection is temporarily disabled. Coming in the next version.
+              </p>
+            </div>
+          )}
 
           {/* PDF Settings */}
           <div className="space-y-4">
@@ -267,7 +273,7 @@ export function ApiBarcodeGenerator({ data, onBarcodeGenerated }: ApiBarcodeGene
             {/* Generated Files */}
             {generatedFiles.length > 0 && (
               <div className="space-y-2">
-                <Label>PNG Files ({generatedFiles.length})</Label>
+                <Label>Generated Files ({generatedFiles.length})</Label>
                 <ScrollArea className="h-32">
                   <div className="space-y-2">
                     {generatedFiles.map((filename) => (
@@ -279,18 +285,12 @@ export function ApiBarcodeGenerator({ data, onBarcodeGenerated }: ApiBarcodeGene
                           <Image className="w-4 h-4 text-blue-600" />
                           <span className="text-sm font-medium">{filename}</span>
                         </div>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => handleDownloadFile(filename, false)}
-                        >
-                          <Download className="w-3 h-3 mr-1" />
-                          Download
-                        </Button>
+                        <Badge variant="secondary">PNG</Badge>
                       </div>
                     ))}
                   </div>
                 </ScrollArea>
+                <p className="text-xs text-muted-foreground">Individual PNG files are included in the PDF collection below</p>
               </div>
             )}
 

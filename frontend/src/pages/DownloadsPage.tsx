@@ -37,13 +37,21 @@ export default function DownloadsPage() {
 
   const handleDownload = async (filename: string, isPdf: boolean = false) => {
     try {
-      if (isPdf) {
-        await apiService.downloadPdfFile(filename);
-      } else {
-        await apiService.downloadBarcodeFile(filename);
+      console.log(`🔍 DownloadsPage: Starting download for ${filename}`);
+      
+      // Only allow PDF downloads
+      if (!isPdf) {
+        toast.error("PNG downloads are not available. Please download the PDF collection instead.");
+        return;
       }
+      
+      // Use the simple download method
+      await apiService.downloadFileSimple(filename, isPdf);
       toast.success(`Downloaded ${filename}`);
+      console.log(`✅ DownloadsPage: Download successful for ${filename}`);
+      
     } catch (error) {
+      console.error(`❌ DownloadsPage: Download failed for ${filename}:`, error);
       toast.error(`Failed to download ${filename}: ${error}`);
     }
   };
@@ -121,14 +129,18 @@ export default function DownloadsPage() {
                       </div>
                       <div className="flex items-center gap-2">
                         <Badge variant="secondary">Available</Badge>
-                        <Button 
-                          variant="outline" 
-                          size="sm"
-                          onClick={() => handleDownload(file.filename, file.filename.endsWith('.pdf'))}
-                        >
-                          <Download className="w-4 h-4 mr-2" />
-                          Download
-                        </Button>
+                        {file.filename.endsWith('.pdf') ? (
+                          <Button 
+                            variant="outline" 
+                            size="sm"
+                            onClick={() => handleDownload(file.filename, true)}
+                          >
+                            <Download className="w-4 h-4 mr-2" />
+                            Download PDF
+                          </Button>
+                        ) : (
+                          <Badge variant="outline">Preview Only</Badge>
+                        )}
                       </div>
                     </div>
                   ))

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -10,6 +10,7 @@ import { useAuth } from '@/contexts/AuthContext';
 
 export default function LoginPage() {
   const { login, isLoading: authLoading } = useAuth();
+  const navigate = useNavigate();
   const [emailOrUsername, setEmailOrUsername] = useState('');
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -22,6 +23,7 @@ export default function LoginPage() {
 
     try {
       await login(emailOrUsername, password);
+      navigate('/dashboard');
     } catch (err: any) {
       setError(err.message || 'Login failed');
     } finally {

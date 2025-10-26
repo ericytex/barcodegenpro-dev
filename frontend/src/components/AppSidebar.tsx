@@ -1,4 +1,4 @@
-import { BarChart3, Upload, FileSpreadsheet, Download, Settings, Home, TestTube, Smartphone, CreditCard, LogOut, User, DollarSign, TrendingUp, Library } from "lucide-react";
+import { BarChart3, Upload, FileSpreadsheet, Download, Settings, Home, TestTube, Smartphone, CreditCard, LogOut, User, DollarSign, TrendingUp, Library, BookOpen } from "lucide-react";
 import { NavLink, useLocation } from "react-router-dom";
 import { useMenuSettings } from "@/contexts/MenuContext";
 import { useAuth } from "@/contexts/AuthContext";
@@ -19,7 +19,7 @@ import {
 } from "@/components/ui/sidebar"
 
 const navigationItems = [
-  { title: "Dashboard", url: "/", icon: Home, key: "dashboard" as const },
+  { title: "Dashboard", url: "/dashboard", icon: Home, key: "dashboard" as const },
   { title: "Features", url: "/features", icon: Library, key: "features" as const },
   { title: "API Test", url: "/api-test", icon: TestTube, key: "apiTest" as const },
   { title: "Upload Excel", url: "/upload-excel", icon: Upload, key: "uploadExcel" as const },
@@ -30,6 +30,7 @@ const navigationItems = [
   { title: "Payments Dashboard", url: "/payments", icon: TrendingUp, key: "payments" as const },
   { title: "Collections", url: "/collections", icon: DollarSign, key: "collections" as const },
   { title: "Downloads", url: "/downloads", icon: Download, key: "downloads" as const },
+  { title: "How To", url: "/how-to", icon: BookOpen, key: "howTo" as const },
   { title: "Settings", url: "/settings", icon: Settings, key: "settings" as const },
 ];
 

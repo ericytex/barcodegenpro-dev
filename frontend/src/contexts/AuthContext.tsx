@@ -21,6 +21,7 @@ interface AuthContextType {
   register: (email: string, username: string, password: string, fullName?: string) => Promise<void>;
   logout: () => void;
   refreshToken: () => Promise<void>;
+  handleSessionExpiration: () => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -77,11 +78,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (refreshTokenValue) {
           await refreshToken();
         } else {
-          clearAuthState();
+          handleSessionExpiration();
         }
       }
     } catch (error) {
       console.error('Token verification failed:', error);
+      handleSessionExpiration();
     }
   };
 
@@ -235,9 +237,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     } catch (error) {
       console.error('Token refresh failed:', error);
-      clearAuthState();
-      navigate('/login');
+      handleSessionExpiration();
     }
+  };
+
+  const handleSessionExpiration = () => {
+    console.log('Session expired - redirecting to login');
+    clearAuthState();
+    toast.error('Your session has expired. Please log in again.');
+    navigate('/login', { replace: true });
   };
 
   const value: AuthContextType = {
@@ -249,6 +257,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     register,
     logout,
     refreshToken,
+    handleSessionExpiration,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

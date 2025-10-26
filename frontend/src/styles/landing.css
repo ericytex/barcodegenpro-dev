@@ -1,0 +1,266 @@
+/* Landing Page Animations */
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(30px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+@keyframes slideIn {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+.animate-fade-in-up {
+  animation: fadeInUp 0.6s ease-out;
+}
+
+.animate-pulse-slow {
+  animation: pulse 2s ease-in-out infinite;
+}
+
+.animate-slide-in {
+  animation: slideIn 0.8s ease-out;
+}
+
+/* Barcode animation */
+@keyframes barcodeScan {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+.barcode-scanner {
+  position: relative;
+  overflow: hidden;
+}
+
+.barcode-scanner::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 2px;
+  height: 100%;
+  background: linear-gradient(to bottom, transparent, #3b82f6, transparent);
+  animation: barcodeScan 2s linear infinite;
+}
+
+/* Gradient text animation */
+@keyframes gradientShift {
+  0% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
+}
+
+.animate-gradient {
+  background-size: 200% 200%;
+  animation: gradientShift 3s ease infinite;
+}
+
+/* Hover effects */
+.hover-lift {
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+
+.hover-lift:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #f1f5f9;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* Responsive improvements */
+@media (max-width: 768px) {
+  .hero-title {
+    font-size: 2.5rem;
+    line-height: 1.2;
+  }
+  
+  .hero-subtitle {
+    font-size: 1.125rem;
+  }
+}
+
+/* Barcode visualization improvements */
+.barcode-container {
+  position: relative;
+  overflow: hidden;
+}
+
+.barcode-bar {
+  transition: all 0.3s ease;
+}
+
+.barcode-bar:hover {
+  transform: scaleY(1.1);
+}
+
+.qr-code-container {
+  position: relative;
+  image-rendering: pixelated;
+  image-rendering: -moz-crisp-edges;
+  image-rendering: crisp-edges;
+}
+
+.qr-position-marker {
+  position: absolute;
+  border: 2px solid #000;
+  background: #fff;
+}
+
+.qr-position-marker::before {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  right: 2px;
+  bottom: 2px;
+  background: #000;
+}
+
+/* Realistic barcode patterns */
+.ean13-pattern {
+  background: repeating-linear-gradient(
+    90deg,
+    #000 0px,
+    #000 1px,
+    transparent 1px,
+    transparent 2px
+  );
+}
+
+.code128-pattern {
+  background: repeating-linear-gradient(
+    90deg,
+    #000 0px,
+    #000 2px,
+    transparent 2px,
+    transparent 4px
+  );
+}
+
+/* Enhanced animations for barcode showcase */
+.barcode-showcase-item {
+  transition: all 0.3s ease;
+}
+
+.barcode-showcase-item:hover {
+  transform: translateY(-8px) scale(1.02);
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+}
+
+/* Loading states */
+.loading-shimmer {
+  background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+/* Enhanced professional barcode styling */
+.barcode-professional {
+  background: linear-gradient(135deg, #ffffff 0%, #f8fafc 100%);
+  border: 2px solid #cbd5e1;
+  box-shadow: 
+    0 10px 15px -3px rgba(0, 0, 0, 0.1),
+    0 4px 6px -2px rgba(0, 0, 0, 0.05),
+    inset 0 1px 0 rgba(255, 255, 255, 0.1);
+}
+
+.barcode-bar-professional {
+  transition: all 0.2s ease;
+  border-radius: 0.5px;
+}
+
+.barcode-bar-professional:hover {
+  transform: scaleY(1.05);
+  box-shadow: 0 0 2px rgba(0, 0, 0, 0.3);
+}
+
+.qr-module-professional {
+  transition: all 0.1s ease;
+}
+
+.qr-module-professional:hover {
+  transform: scale(1.1);
+  z-index: 10;
+}
+
+/* Enhanced QR code styling */
+.qr-code-professional {
+  background: #ffffff;
+  border: 2px solid #e2e8f0;
+  box-shadow: 
+    0 4px 6px -1px rgba(0, 0, 0, 0.1),
+    0 2px 4px -1px rgba(0, 0, 0, 0.06);
+}
+
+.qr-position-marker-professional {
+  background: #000000;
+  border: 2px solid #000000;
+}
+
+.qr-position-marker-professional::before {
+  background: #ffffff;
+}
+
+.qr-position-marker-professional::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  right: 2px;
+  bottom: 2px;
+  background: #000000;
+}

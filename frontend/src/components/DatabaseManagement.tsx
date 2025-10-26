@@ -365,10 +365,10 @@ export function DatabaseManagement() {
                 <span className="text-sm font-medium">Total Records</span>
               </div>
               <div className="text-2xl font-bold">
-                {stats?.stats?.total_records?.toLocaleString() || 'N/A'}
+                {stats?.statistics?.total_records?.toLocaleString() || 'N/A'}
               </div>
               <div className="text-xs text-muted-foreground">
-                {stats?.stats?.total_tables || 'N/A'} tables
+                {stats?.statistics?.total_tables || 'N/A'} tables
               </div>
             </div>
 

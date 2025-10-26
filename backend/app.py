@@ -129,11 +129,10 @@ app.include_router(database_management_router)
 from routes.banners import router as banners_router
 app.include_router(banners_router)
 
-# # Include features routes (temporarily disabled)
-# from routes.features import router as features_router
-# from .dependencies import get_feature_service # Import get_feature_service from the new file
+# Include features routes
+from routes.features import router as features_router
 
-# app.include_router(features_router, prefix="/api")
+app.include_router(features_router, prefix="/api")
 
 # Startup event
 @app.on_event("startup")
@@ -409,12 +408,12 @@ async def upload_excel_and_generate(
                 )
             else:
                 print(f"📊 Using standard generation")
-            generated_files = await barcode_service.generate_barcodes_from_data(
-                items,
-                auto_generate_second_imei=auto_generate_second_imei,
-                device_type=device_type,
-                device_id=device_id
-            )
+                generated_files = await barcode_service.generate_barcodes_from_data(
+                    items,
+                    auto_generate_second_imei=auto_generate_second_imei,
+                    device_type=device_type,
+                    device_id=device_id
+                )
             
             # Extract files and session_id from the response
             if isinstance(generated_files, tuple):

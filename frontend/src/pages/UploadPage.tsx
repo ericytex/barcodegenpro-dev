@@ -106,8 +106,8 @@ export default function UploadPage() {
               </div>
             </div>
 
-            {/* Device Selection - Only show when direct generation is enabled */}
-            {directGeneration && (
+            {/* Device Selection - Hidden */}
+            {false && (
               <div className="space-y-4 p-4 bg-primary/5 rounded-lg border border-primary/20">
                 <div className="flex items-center gap-2">
                   <Smartphone className="w-4 h-4 text-primary" />
