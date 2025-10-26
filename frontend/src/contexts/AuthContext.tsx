@@ -33,6 +33,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
   const navigate = useNavigate();
 
+  // Helper to construct API URLs correctly
+  const buildApiUrl = (endpoint: string) => {
+    const apiConfig = getApiConfig();
+    // If baseUrl is relative (starts with /), don't add /api prefix
+    // If baseUrl is absolute (starts with http), add /api prefix
+    if (apiConfig.baseUrl.startsWith('/')) {
+      return `${apiConfig.baseUrl}${endpoint}`;
+    } else {
+      return `${apiConfig.baseUrl}/api${endpoint}`;
+    }
+  };
+
   // Load auth state from localStorage on mount
   useEffect(() => {
     const loadAuthState = () => {
@@ -66,7 +78,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const verifyToken = async (tokenToVerify: string) => {
     try {
       const apiConfig = getApiConfig();
-      const response = await fetch(`${apiConfig.baseUrl}/api/auth/verify`, {
+      const response = await fetch(buildApiUrl('/auth/verify'), {
         headers: {
           'Authorization': `Bearer ${tokenToVerify}`,
           'X-API-Key': apiConfig.apiKey,
@@ -108,7 +120,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const register = async (email: string, username: string, password: string, fullName?: string) => {
     try {
       const apiConfig = getApiConfig();
-      const response = await fetch(`${apiConfig.baseUrl}/api/auth/register`, {
+      const response = await fetch(buildApiUrl('/auth/register'), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -144,7 +156,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const login = async (emailOrUsername: string, password: string) => {
     try {
       const apiConfig = getApiConfig();
-      const response = await fetch(`${apiConfig.baseUrl}/api/auth/login`, {
+      const response = await fetch(buildApiUrl('/auth/login'), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -176,7 +188,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       if (token) {
         const apiConfig = getApiConfig();
-        await fetch(`${apiConfig.baseUrl}/api/auth/logout`, {
+        await fetch(buildApiUrl('/auth/logout'), {
           method: 'POST',
           headers: {
             'Authorization': `Bearer ${token}`,
@@ -200,7 +212,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
 
       const apiConfig = getApiConfig();
-      const response = await fetch(`${apiConfig.baseUrl}/api/auth/refresh`, {
+      const response = await fetch(buildApiUrl('/auth/refresh'), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -220,7 +232,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setToken(data.access_token);
 
       // Re-fetch user data with the new token
-      const userResponse = await fetch(`${apiConfig.baseUrl}/api/auth/me`, {
+      const userResponse = await fetch(buildApiUrl('/auth/me'), {
         headers: {
           'Authorization': `Bearer ${data.access_token}`,
           'X-API-Key': apiConfig.apiKey,
