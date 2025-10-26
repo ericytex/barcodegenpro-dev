@@ -134,84 +134,146 @@ from routes.features import router as features_router
 
 app.include_router(features_router, prefix="/api")
 
-# Protected docs endpoints (admin only via API key)
+async def verify_admin_from_request(request: Request):
+    """Helper function to verify admin status from request"""
+    from services.auth_service import AuthService
+    
+    try:
+        auth_service = AuthService()
+        
+        # Try to get token from Authorization header
+        auth_header = request.headers.get("Authorization", "")
+        if auth_header.startswith("Bearer "):
+            token = auth_header.split(" ")[1]
+            user_data = auth_service.verify_token(token)
+            if user_data and user_data.get('is_admin'):
+                return user_data
+        
+        # Try to get token from cookies
+        token = request.cookies.get("access_token") or request.cookies.get("token")
+        if token:
+            user_data = auth_service.verify_token(token)
+            if user_data and user_data.get('is_admin'):
+                return user_data
+        
+        return None
+    except Exception:
+        return None
+
+# Protected docs endpoints (admin login required)
 @app.get("/docs", include_in_schema=False)
-async def protected_docs(request: Request, api_key: str = None):
-    """Protected Swagger UI docs - Admin only (requires API key)"""
-    from fastapi import HTTPException, status
+async def protected_docs(request: Request):
+    """Protected Swagger UI docs - Admin login required"""
     from fastapi.responses import HTMLResponse
     
-    # Always require API key for docs access
-    if not api_key:
-        return HTMLResponse(
-            status_code=401,
-            content="<h1>401 Unauthorized</h1><p>API key required to access documentation.</p><p>Use: /docs?api_key=YOUR_KEY</p><p><small>To enable docs access, set API_KEYS environment variable in docker-compose.yml</small></p>"
-        )
+    # Check if user is admin
+    user_data = await verify_admin_from_request(request)
     
-    # Verify API key
-    api_keys = security_manager.api_keys
-    if api_keys and api_key not in api_keys:
+    if not user_data:
         return HTMLResponse(
             status_code=401,
-            content="<h1>401 Unauthorized</h1><p>Invalid API key.</p>"
+            content="""
+            <html>
+            <head>
+                <title>Authentication Required</title>
+                <style>
+                    body { font-family: Arial, sans-serif; padding: 40px; text-align: center; }
+                    .container { max-width: 600px; margin: 0 auto; }
+                    .btn { 
+                        background: #3b82f6; 
+                        color: white; 
+                        padding: 12px 24px; 
+                        text-decoration: none; 
+                        border-radius: 6px;
+                        display: inline-block;
+                        margin-top: 20px;
+                    }
+                    .btn:hover { background: #2563eb; }
+                </style>
+            </head>
+            <body>
+                <div class="container">
+                    <h1>🔒 Authentication Required</h1>
+                    <p>You need to be logged in as an admin to access the API documentation.</p>
+                    <a href='http://localhost:80/login' class="btn">Login as Admin</a>
+                    <p style="margin-top: 30px; color: #666; font-size: 14px;">
+                        Or include your Bearer token: Authorization: Bearer YOUR_TOKEN
+                    </p>
+                </div>
+            </body>
+            </html>
+            """
         )
     
     # Return the built-in Swagger UI
     from fastapi.openapi.docs import get_swagger_ui_html
     return get_swagger_ui_html(
-        openapi_url=f"{app.openapi_url}?api_key={api_key}",
+        openapi_url=app.openapi_url,
         title=app.title,
         swagger_js_url="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/swagger-ui-bundle.js",
         swagger_css_url="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/swagger-ui.css"
     )
 
 @app.get("/redoc", include_in_schema=False)
-async def protected_redoc(request: Request, api_key: str = None):
-    """Protected ReDoc - Admin only (requires API key)"""
-    from fastapi import HTTPException, status
+async def protected_redoc(request: Request):
+    """Protected ReDoc - Admin login required"""
     from fastapi.responses import HTMLResponse
     
-    # Always require API key for docs access
-    if not api_key:
-        return HTMLResponse(
-            status_code=401,
-            content="<h1>401 Unauthorized</h1><p>API key required to access documentation.</p><p>Use: /redoc?api_key=YOUR_KEY</p>"
-        )
+    # Check if user is admin
+    user_data = await verify_admin_from_request(request)
     
-    # Verify API key
-    api_keys = security_manager.api_keys
-    if api_keys and api_key not in api_keys:
+    if not user_data:
         return HTMLResponse(
             status_code=401,
-            content="<h1>401 Unauthorized</h1><p>Invalid API key.</p>"
+            content="""
+            <html>
+            <head>
+                <title>Authentication Required</title>
+                <style>
+                    body { font-family: Arial, sans-serif; padding: 40px; text-align: center; }
+                    .container { max-width: 600px; margin: 0 auto; }
+                    .btn { 
+                        background: #3b82f6; 
+                        color: white; 
+                        padding: 12px 24px; 
+                        text-decoration: none; 
+                        border-radius: 6px;
+                        display: inline-block;
+                        margin-top: 20px;
+                    }
+                </style>
+            </head>
+            <body>
+                <div class="container">
+                    <h1>🔒 Authentication Required</h1>
+                    <p>Admin login required to access ReDoc.</p>
+                    <a href='http://localhost:80/login' class="btn">Login as Admin</a>
+                </div>
+            </body>
+            </html>
+            """
         )
     
     # Return the built-in ReDoc
     from fastapi.openapi.docs import get_redoc_html
     return get_redoc_html(
-        openapi_url=f"{app.openapi_url}?api_key={api_key}",
+        openapi_url=app.openapi_url,
         title=app.title,
         redoc_js_url="https://cdn.jsdelivr.net/npm/redoc@latest/bundles/redoc.standalone.js"
     )
 
 @app.get("/openapi.json", include_in_schema=False)
-async def protected_openapi(request: Request, api_key: str = None):
-    """Protected OpenAPI schema - Admin only (requires API key)"""
+async def protected_openapi(request: Request):
+    """Protected OpenAPI schema - Admin login required"""
     from fastapi import HTTPException, status
     
-    # Always require API key for schema access
-    if not api_key:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="API key required to access schema."
-        )
+    # Check if user is admin
+    user_data = await verify_admin_from_request(request)
     
-    # Verify API key
-    api_keys = security_manager.api_keys
-    if api_keys and api_key not in api_keys:
+    if not user_data:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid API key."
+            detail="Authentication required. Please login as admin."
         )
     
     return app.openapi()
