@@ -43,7 +43,7 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
       args:
-        - VITE_API_BASE_URL=http://${DOMAIN:-localhost}/api
+        - VITE_API_BASE_URL=/api
         - VITE_ENVIRONMENT=production
     container_name: barcode-frontend
     restart: unless-stopped
