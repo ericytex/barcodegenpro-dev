@@ -134,23 +134,28 @@ from routes.features import router as features_router
 
 app.include_router(features_router, prefix="/api")
 
-async def verify_admin_from_request(request: Request):
+async def verify_admin_from_request(request: Request, token_param: str = None):
     """Helper function to verify admin status from request"""
     from services.auth_service import AuthService
     
     try:
         auth_service = AuthService()
+        token = None
+        
+        # Try to get token from query parameter (for easy browser access)
+        if token_param:
+            token = token_param
         
         # Try to get token from Authorization header
-        auth_header = request.headers.get("Authorization", "")
-        if auth_header.startswith("Bearer "):
-            token = auth_header.split(" ")[1]
-            user_data = auth_service.verify_token(token)
-            if user_data and user_data.get('is_admin'):
-                return user_data
+        if not token:
+            auth_header = request.headers.get("Authorization", "")
+            if auth_header.startswith("Bearer "):
+                token = auth_header.split(" ")[1]
         
         # Try to get token from cookies
-        token = request.cookies.get("access_token") or request.cookies.get("token")
+        if not token:
+            token = request.cookies.get("access_token") or request.cookies.get("token")
+        
         if token:
             user_data = auth_service.verify_token(token)
             if user_data and user_data.get('is_admin'):
@@ -162,12 +167,12 @@ async def verify_admin_from_request(request: Request):
 
 # Protected docs endpoints (admin login required)
 @app.get("/docs", include_in_schema=False)
-async def protected_docs(request: Request):
+async def protected_docs(request: Request, token: str = None):
     """Protected Swagger UI docs - Admin login required"""
     from fastapi.responses import HTMLResponse
     
     # Check if user is admin
-    user_data = await verify_admin_from_request(request)
+    user_data = await verify_admin_from_request(request, token)
     
     if not user_data:
         return HTMLResponse(
@@ -196,31 +201,46 @@ async def protected_docs(request: Request):
                     <h1>🔒 Authentication Required</h1>
                     <p>You need to be logged in as an admin to access the API documentation.</p>
                     <a href='http://localhost:80/login' class="btn">Login as Admin</a>
-                    <p style="margin-top: 30px; color: #666; font-size: 14px;">
-                        Or include your Bearer token: Authorization: Bearer YOUR_TOKEN
-                    </p>
+                    <div style="margin-top: 30px; background: #f3f4f6; padding: 20px; border-radius: 8px; font-size: 14px;">
+                        <p><strong>How to access:</strong></p>
+                        <ol style="text-align: left; max-width: 500px; margin: 10px auto;">
+                            <li>Login at http://localhost:80/login as admin</li>
+                            <li>Open DevTools (F12) → Application → Cookies</li>
+                            <li>Copy your access_token value</li>
+                            <li>Use: /docs?token=YOUR_TOKEN</li>
+                        </ol>
+                        <p style="color: #666; margin-top: 15px;">
+                            Or include: <code>Authorization: Bearer YOUR_TOKEN</code>
+                        </p>
+                    </div>
                 </div>
             </body>
             </html>
             """
         )
     
-    # Return the built-in Swagger UI
+    # Return the built-in Swagger UI (pass token if provided)
     from fastapi.openapi.docs import get_swagger_ui_html
+    openapi_url = app.openapi_url
+    if token and openapi_url:
+        # Add token to openapi URL so Swagger UI can use it
+        separator = "&" if "?" in openapi_url else "?"
+        openapi_url = f"{openapi_url}{separator}token={token}"
+    
     return get_swagger_ui_html(
-        openapi_url=app.openapi_url,
+        openapi_url=openapi_url,
         title=app.title,
         swagger_js_url="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/swagger-ui-bundle.js",
         swagger_css_url="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/swagger-ui.css"
     )
 
 @app.get("/redoc", include_in_schema=False)
-async def protected_redoc(request: Request):
+async def protected_redoc(request: Request, token: str = None):
     """Protected ReDoc - Admin login required"""
     from fastapi.responses import HTMLResponse
     
     # Check if user is admin
-    user_data = await verify_admin_from_request(request)
+    user_data = await verify_admin_from_request(request, token)
     
     if not user_data:
         return HTMLResponse(
@@ -248,27 +268,35 @@ async def protected_redoc(request: Request):
                     <h1>🔒 Authentication Required</h1>
                     <p>Admin login required to access ReDoc.</p>
                     <a href='http://localhost:80/login' class="btn">Login as Admin</a>
+                    <div style="margin-top: 20px; background: #f3f4f6; padding: 15px; border-radius: 8px; font-size: 13px;">
+                        <p><strong>Use token:</strong> /redoc?token=YOUR_TOKEN</p>
+                    </div>
                 </div>
             </body>
             </html>
             """
         )
     
-    # Return the built-in ReDoc
+    # Return the built-in ReDoc (pass token if provided)
     from fastapi.openapi.docs import get_redoc_html
+    openapi_url = app.openapi_url
+    if token and openapi_url:
+        separator = "&" if "?" in openapi_url else "?"
+        openapi_url = f"{openapi_url}{separator}token={token}"
+    
     return get_redoc_html(
-        openapi_url=app.openapi_url,
+        openapi_url=openapi_url,
         title=app.title,
         redoc_js_url="https://cdn.jsdelivr.net/npm/redoc@latest/bundles/redoc.standalone.js"
     )
 
 @app.get("/openapi.json", include_in_schema=False)
-async def protected_openapi(request: Request):
+async def protected_openapi(request: Request, token: str = None):
     """Protected OpenAPI schema - Admin login required"""
     from fastapi import HTTPException, status
     
     # Check if user is admin
-    user_data = await verify_admin_from_request(request)
+    user_data = await verify_admin_from_request(request, token)
     
     if not user_data:
         raise HTTPException(
