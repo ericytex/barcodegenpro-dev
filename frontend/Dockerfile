@@ -10,8 +10,15 @@ COPY package*.json ./
 # Install dependencies (including dev dependencies for build)
 RUN npm ci
 
-# Copy source code
-COPY . .
+# Copy source code explicitly to ensure all files are included
+COPY src ./src
+COPY public ./public
+COPY index.html ./
+COPY vite.config.ts ./
+COPY tsconfig*.json ./
+COPY components.json ./
+COPY tailwind.config.ts ./
+COPY postcss.config.js ./
 
 # Build argument for API URL (use relative path since nginx proxies /api/)
 ARG VITE_API_BASE_URL=/api
