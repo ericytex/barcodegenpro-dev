@@ -67,7 +67,13 @@ export default function SettingsPage() {
     
     setIsLoadingPaymentSettings(true);
     try {
-      const response = await fetch('/api/tokens/admin/payment-settings', {
+      const baseUrl = environmentConfig.baseUrl;
+      const url = baseUrl.endsWith('/api') 
+        ? `${baseUrl}/tokens/admin/payment-settings`
+        : baseUrl.startsWith('/') 
+          ? `/api/tokens/admin/payment-settings`
+          : `${baseUrl}/api/tokens/admin/payment-settings`;
+      const response = await fetch(url, {
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('access_token')}`,
           'Content-Type': 'application/json'
@@ -90,7 +96,13 @@ export default function SettingsPage() {
     
     setIsSavingPaymentSettings(true);
     try {
-      const response = await fetch('/api/tokens/admin/payment-settings', {
+      const baseUrl = environmentConfig.baseUrl;
+      const url = baseUrl.endsWith('/api') 
+        ? `${baseUrl}/tokens/admin/payment-settings`
+        : baseUrl.startsWith('/') 
+          ? `/api/tokens/admin/payment-settings`
+          : `${baseUrl}/api/tokens/admin/payment-settings`;
+      const response = await fetch(url, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('access_token')}`,

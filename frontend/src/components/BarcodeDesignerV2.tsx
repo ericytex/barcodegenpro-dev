@@ -27,6 +27,7 @@ import {
 import { generateBarcodeDataURL, generateQRCodeDataURL } from "@/utils/barcodeGenerator";
 import ExcelIntegration from "./ExcelIntegration";
 import * as ExcelJS from 'exceljs';
+import { getApiConfig } from "@/lib/api";
 
 type ComponentType = "text" | "barcode" | "qr" | "rectangle" | "line" | "circle";
 
@@ -817,7 +818,8 @@ export default function BarcodeDesignerV2() {
   // Load available templates
   const loadTemplates = async () => {
     try {
-      const response = await fetch('http://localhost:8034/api/templates', {
+      const apiConfig = getApiConfig();
+      const response = await fetch(`${apiConfig.baseUrl}/templates`, {
         headers: {
           'X-API-Key': 'test-key',
         },
@@ -947,7 +949,8 @@ export default function BarcodeDesignerV2() {
         updated_at: now
       };
 
-      const response = await fetch('http://localhost:8034/api/templates', {
+      const apiConfig = getApiConfig();
+      const response = await fetch(`${apiConfig.baseUrl}/templates`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -980,7 +983,8 @@ export default function BarcodeDesignerV2() {
   // Load Templates for editing
   const loadTemplatesForEdit = async () => {
     try {
-      const response = await fetch('http://localhost:8034/api/templates', {
+      const apiConfig = getApiConfig();
+      const response = await fetch(`${apiConfig.baseUrl}/templates`, {
         headers: {
           'X-API-Key': 'test-key',
         },
@@ -1001,7 +1005,8 @@ export default function BarcodeDesignerV2() {
   // Load selected template for editing
   const loadTemplateForEdit = async (templateId: string) => {
     try {
-      const response = await fetch(`http://localhost:8034/api/templates/${templateId}`, {
+      const apiConfig = getApiConfig();
+      const response = await fetch(`${apiConfig.baseUrl}/templates/${templateId}`, {
         headers: {
           'X-API-Key': 'test-key',
         },
@@ -1090,7 +1095,8 @@ export default function BarcodeDesignerV2() {
         updated_at: new Date().toISOString() // This will be overwritten by backend with current timestamp
       };
 
-      const response = await fetch(`http://localhost:8034/api/templates/${editingTemplateId}`, {
+      const apiConfig = getApiConfig();
+      const response = await fetch(`${apiConfig.baseUrl}/templates/${editingTemplateId}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',

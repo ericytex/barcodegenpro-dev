@@ -88,8 +88,11 @@ class OptimusCollectionsService:
                 # Process and enhance the data
                 processed_data = self._process_collections_data(data)
                 
-                # Save to database for caching
-                self._save_collections_to_db(processed_data.get('collections', []))
+                # Save to database for caching (handles incremental addition)
+                collections_to_save = processed_data.get('collections', [])
+                logger.info(f"Processing {len(collections_to_save)} collections from API response")
+                if collections_to_save:
+                    self._save_collections_to_db(collections_to_save)
                 
                 return {
                     "success": True,
@@ -129,38 +132,46 @@ class OptimusCollectionsService:
     
     def _process_collections_data(self, data: Dict[str, Any]) -> Dict[str, Any]:
         """Process and enhance collections data"""
-        collections = data.get('collections', [])
+        # Handle Optimus API format (returns 'data' array) vs old format (collections array)
+        if 'data' in data and isinstance(data['data'], list):
+            collections = data['data']
+            logger.info(f"Found {len(collections)} collections in Optimus API 'data' array")
+        else:
+            collections = data.get('collections', [])
+            logger.info(f"Found {len(collections)} collections in 'collections' array")
         processed_collections = []
         
         total_amount = 0
         status_counts = {}
         
         for collection in collections:
-            # Enhance collection data
+            # Map Optimus API fields to our internal format
+            # Optimus returns app_transaction_uid, transaction_status, api_referance, local_amount, etc.
             processed_collection = {
-                "id": collection.get('id'),
-                "transaction_uid": collection.get('transaction_uid'),
-                "amount": collection.get('amount', 0),
-                "currency": collection.get('currency', 'UGX'),
-                "status": collection.get('status'),
+                "id": collection.get('id') or collection.get('api_referance'),
+                "transaction_uid": collection.get('transaction_uid') or collection.get('app_transaction_uid'),
+                "amount": int(collection.get('amount') or collection.get('local_amount') or 0),
+                "currency": collection.get('currency') or collection.get('local_currency', 'UGX'),
+                "status": collection.get('status') or collection.get('transaction_status'),
                 "provider": collection.get('provider'),
-                "phone": collection.get('phone'),
-                "created_at": collection.get('created_at'),
+                "phone": collection.get('phone') or collection.get('debit_phone_number'),
+                "created_at": collection.get('created_at') or collection.get('transaction_date'),
                 "completed_at": collection.get('completed_at'),
                 "description": collection.get('description', ''),
-                "reference": collection.get('reference', ''),
-                "formatted_amount": f"{collection.get('amount', 0):,} {collection.get('currency', 'UGX')}",
-                "status_badge": self._get_status_badge(collection.get('status')),
+                "reference": collection.get('reference') or collection.get('api_referance', ''),
+                "formatted_amount": f"{int(collection.get('amount') or collection.get('local_amount') or 0):,} {collection.get('currency') or collection.get('local_currency', 'UGX')}",
+                "status_badge": self._get_status_badge(collection.get('status') or collection.get('transaction_status')),
                 "provider_badge": self._get_provider_badge(collection.get('provider'))
             }
             
             processed_collections.append(processed_collection)
             
             # Calculate statistics
-            if collection.get('amount'):
-                total_amount += collection.get('amount', 0)
+            amount_value = collection.get('amount') or collection.get('local_amount', 0)
+            if amount_value:
+                total_amount += int(amount_value)
             
-            status = collection.get('status', 'unknown')
+            status = collection.get('status') or collection.get('transaction_status') or 'unknown'
             status_counts[status] = status_counts.get(status, 0) + 1
         
         return {
@@ -180,22 +191,45 @@ class OptimusCollectionsService:
     
     def _get_status_badge(self, status: str) -> Dict[str, str]:
         """Get status badge styling"""
+        if not status:
+            return {'color': 'gray', 'text': 'Unknown'}
+        
         status_config = {
             'completed': {'color': 'green', 'text': 'Completed'},
             'pending': {'color': 'yellow', 'text': 'Pending'},
             'failed': {'color': 'red', 'text': 'Failed'},
             'cancelled': {'color': 'gray', 'text': 'Cancelled'}
         }
-        return status_config.get(status, {'color': 'gray', 'text': status.title()})
+        
+        if status in status_config:
+            return status_config[status]
+        else:
+            # Return formatted status if not in config
+            try:
+                text = str(status).title() if status else 'Unknown'
+            except:
+                text = 'Unknown'
+            return {'color': 'gray', 'text': text}
     
     def _get_provider_badge(self, provider: str) -> Dict[str, str]:
         """Get provider badge styling"""
+        if not provider:
+            return {'color': 'gray', 'text': 'Unknown'}
+        
         provider_config = {
             'MTN': {'color': 'yellow', 'text': 'MTN'},
             'AIRTEL': {'color': 'red', 'text': 'AIRTEL'},
             'MPESA': {'color': 'green', 'text': 'MPESA'}
         }
-        return provider_config.get(provider, {'color': 'blue', 'text': provider})
+        
+        if provider in provider_config:
+            return provider_config[provider]
+        else:
+            try:
+                text = str(provider) if provider else 'Unknown'
+            except:
+                text = 'Unknown'
+            return {'color': 'blue', 'text': text}
     
     def _save_collections_to_db(self, collections: List[Dict[str, Any]]):
         """Save collections to database for caching"""
@@ -203,29 +237,10 @@ class OptimusCollectionsService:
             with sqlite3.connect(self.db_path) as conn:
                 cursor = conn.cursor()
                 
-                # Create collections cache table if not exists
-                cursor.execute("""
-                    CREATE TABLE IF NOT EXISTS optimus_collections_cache (
-                        id INTEGER PRIMARY KEY AUTOINCREMENT,
-                        collection_id TEXT UNIQUE NOT NULL,
-                        transaction_uid TEXT,
-                        amount INTEGER,
-                        currency TEXT,
-                        status TEXT,
-                        provider TEXT,
-                        phone TEXT,
-                        created_at TEXT,
-                        completed_at TEXT,
-                        description TEXT,
-                        reference TEXT,
-                        cached_at DATETIME DEFAULT CURRENT_TIMESTAMP
-                    )
-                """)
-                
-                # Insert or update collections
+                # Insert or update collections in the collections table
                 for collection in collections:
                     cursor.execute("""
-                        INSERT OR REPLACE INTO optimus_collections_cache (
+                        INSERT OR REPLACE INTO collections (
                             collection_id, transaction_uid, amount, currency, status,
                             provider, phone, created_at, completed_at, description, reference
                         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -257,8 +272,8 @@ class OptimusCollectionsService:
                 cursor = conn.cursor()
                 
                 cursor.execute("""
-                    SELECT * FROM optimus_collections_cache 
-                    ORDER BY cached_at DESC 
+                    SELECT * FROM collections 
+                    ORDER BY synced_at DESC 
                     LIMIT ? OFFSET ?
                 """, (limit, offset))
                 
@@ -272,7 +287,7 @@ class OptimusCollectionsService:
                         SUM(amount) as total_amount,
                         status,
                         COUNT(*) as status_count
-                    FROM optimus_collections_cache 
+                    FROM collections 
                     GROUP BY status
                 """)
                 
@@ -326,7 +341,7 @@ class OptimusCollectionsService:
                         COUNT(*) as count,
                         SUM(amount) as total_amount,
                         status
-                    FROM optimus_collections_cache 
+                    FROM collections 
                     WHERE DATE(created_at) BETWEEN ? AND ?
                     GROUP BY DATE(created_at), status
                     ORDER BY date DESC
@@ -369,3 +384,117 @@ class OptimusCollectionsService:
                 "error": "stats_error",
                 "message": str(e)
             }
+    
+    def get_transaction_by_uid_from_db(self, transaction_uid: str) -> Dict[str, Any]:
+        """Query database for specific transaction by transaction_uid"""
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                conn.row_factory = sqlite3.Row
+                cursor = conn.cursor()
+                
+                cursor.execute("""
+                    SELECT * FROM collections 
+                    WHERE transaction_uid = ?
+                    ORDER BY updated_at DESC
+                    LIMIT 1
+                """, (transaction_uid,))
+                
+                row = cursor.fetchone()
+                
+                if row:
+                    transaction = dict(row)
+                    return {
+                        "success": True,
+                        "found": True,
+                        "transaction": transaction,
+                        "status": transaction.get('status'),
+                        "source": "database"
+                    }
+                else:
+                    return {
+                        "success": True,
+                        "found": False,
+                        "source": "database"
+                    }
+                    
+        except Exception as e:
+            logger.error(f"Error querying database for transaction {transaction_uid}: {e}")
+            return {"success": False, "error": str(e), "source": "database"}
+    
+    def get_transaction_by_uid(self, transaction_uid: str, check_db_first: bool = True) -> Dict[str, Any]:
+        """Query for specific transaction - checks database first, then API if needed"""
+        
+        # Check database first
+        if check_db_first:
+            db_result = self.get_transaction_by_uid_from_db(transaction_uid)
+            
+            if db_result.get('found'):
+                # Found in database
+                logger.info(f"Transaction {transaction_uid} found in database with status: {db_result.get('status')}")
+                return db_result
+            
+            logger.info(f"Transaction {transaction_uid} not in database, querying API...")
+        
+        # Not in database or check_db_first=False, query API
+        try:
+            # Get collections (fetch a reasonable batch to search through)
+            url = f"{self.base_url}/{self.api_key}"
+            params = {"limit": 100, "offset": 0}
+            response = requests.get(url, params=params, timeout=30)
+            
+            if response.status_code == 200:
+                data = response.json()
+                collections = data.get('collections', [])
+                
+                # Save fetched collections to database
+                if collections:
+                    self._save_collections_to_db(collections)
+                
+                # Find transaction matching the UID
+                for collection in collections:
+                    if collection.get('transaction_uid') == transaction_uid:
+                        return {
+                            "success": True,
+                            "found": True,
+                            "transaction": collection,
+                            "status": collection.get('status'),
+                            "source": "api"
+                        }
+                
+                # If not found in first 100, try pagination
+                offset = 100
+                while offset < 1000:  # Search up to 1000 records
+                    params = {"limit": 100, "offset": offset}
+                    response = requests.get(url, params=params, timeout=30)
+                    
+                    if response.status_code == 200:
+                        data = response.json()
+                        collections = data.get('collections', [])
+                        
+                        if not collections:
+                            break
+                        
+                        # Save to database
+                        self._save_collections_to_db(collections)
+                        
+                        for collection in collections:
+                            if collection.get('transaction_uid') == transaction_uid:
+                                return {
+                                    "success": True,
+                                    "found": True,
+                                    "transaction": collection,
+                                    "status": collection.get('status'),
+                                    "source": "api"
+                                }
+                        
+                        offset += 100
+                    else:
+                        break
+                
+                return {"success": True, "found": False, "source": "api"}
+            else:
+                logger.error(f"Optimus API error: {response.status_code} - {response.text}")
+                return {"success": False, "error": f"API error: {response.status_code}"}
+        except Exception as e:
+            logger.error(f"Error querying transaction {transaction_uid}: {e}")
+            return {"success": False, "error": str(e)}

@@ -778,3 +778,114 @@ async def payment_webhook(data: dict):
         logger.error(f"Error processing webhook: {e}")
         return {"success": False, "error": str(e)}
 
+
+# ==================== Token Verification Endpoint ====================
+
+@router.get("/verify-transaction/{transaction_uid}")
+async def verify_transaction_status(
+    transaction_uid: str,
+    current_user: dict = Depends(get_current_user)
+):
+    """Verify a specific transaction with Collections API and credit tokens if confirmed"""
+    try:
+        logger.info(f"Verifying transaction: {transaction_uid}")
+        from services.collections_service import OptimusCollectionsService
+        from services.token_service import TokenService
+        
+        collections_service = OptimusCollectionsService()
+        token_service = TokenService()
+        
+        # Query Collections API
+        logger.info(f"Querying Collections API for transaction: {transaction_uid}")
+        result = collections_service.get_transaction_by_uid(transaction_uid)
+        logger.info(f"Collections API result: {result}")
+        
+        if result.get('success') and result.get('found'):
+            transaction = result['transaction']
+            status = transaction.get('status')
+            logger.info(f"Transaction found in Collections with status: {status}")
+            
+            # If completed, credit tokens
+            if status in ['completed', 'success']:
+                logger.info(f"Transaction confirmed (status: {status}), crediting tokens...")
+                success = token_service.complete_purchase(transaction_uid)
+                logger.info(f"Token crediting result: {success}")
+                
+                return {
+                    "success": True,
+                    "confirmed": True,
+                    "status": status,
+                    "tokens_credited": success,
+                    "message": "Transaction confirmed and tokens credited" if success else "Transaction confirmed but failed to credit tokens"
+                }
+            else:
+                logger.info(f"Transaction not yet confirmed (status: {status})")
+                return {
+                    "success": True,
+                    "confirmed": False,
+                    "status": status,
+                    "message": f"Payment status: {status}"
+                }
+        else:
+            logger.info(f"Transaction not found in Collections API or API error")
+            
+            # Check if transaction is already completed in our database
+            # If it is, assume Collections confirmed it and try to credit
+            db_status = token_service._get_purchase_status(transaction_uid)
+            if db_status == 'completed':
+                logger.info(f"Transaction already marked completed in DB, crediting tokens...")
+                success = token_service.complete_purchase(transaction_uid)
+                logger.info(f"Token crediting result: {success}")
+                
+                return {
+                    "success": True,
+                    "confirmed": success,
+                    "found_in_collections": False,
+                    "tokens_credited": success,
+                    "message": "Transaction completed in database, tokens credited" if success else "Failed to credit tokens"
+                }
+            
+            return {
+                "success": True,
+                "confirmed": False,
+                "found": False,
+                "message": "Transaction not yet found in Collections API"
+            }
+            
+    except Exception as e:
+        logger.error(f"Error verifying transaction: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error verifying transaction: {str(e)}"
+        )
+
+@router.post("/admin/verify-pending-purchases")
+async def verify_pending_purchases(
+    current_user: dict = Depends(get_current_user)
+):
+    """Manually trigger verification of pending token purchases"""
+    # Check if user is admin
+    if not current_user.get('is_admin'):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin access required"
+        )
+    
+    try:
+        from services.token_verification_service import TokenVerificationService
+        verification_service = TokenVerificationService()
+        
+        results = verification_service.verify_and_credit_pending_purchases()
+        
+        return {
+            "success": True,
+            "message": "Verification completed",
+            "results": results
+        }
+    except Exception as e:
+        logger.error(f"Error in verify_pending_purchases: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Verification failed: {str(e)}"
+        )
+

@@ -1,0 +1,24 @@
+[Unit]
+Description=GitHub Webhook Receiver for Docker Deployment
+After=network.target docker.service
+Requires=docker.service
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/barcode-gen-pro
+Environment="COMPOSE_FILE=docker-compose.prod.yml"
+Environment="COMPOSE_DIR=/opt/barcode-gen-pro"
+Environment="WEBHOOK_SECRET=your-webhook-secret-here"
+Environment="LOG_FILE=/var/log/webhook-deploy.log"
+ExecStart=/usr/bin/socat TCP-LISTEN:9000,fork,reuseaddr EXEC:/opt/barcode-gen-pro/deploy/webhook-receiver.sh
+Restart=always
+RestartSec=10
+
+# Security
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
+

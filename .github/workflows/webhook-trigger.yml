@@ -1,0 +1,71 @@
+name: Trigger Remote Server Webhook
+
+on:
+  workflow_run:
+    workflows: ["Build and Push Docker Images"]
+    types:
+      - completed
+
+jobs:
+  trigger-webhook:
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Check webhook configuration
+        run: |
+          if [ -z "${{ secrets.WEBHOOK_URL }}" ]; then
+            echo "⚠️ WEBHOOK_URL secret not set. Skipping webhook trigger."
+            echo "To enable webhook, add WEBHOOK_URL and WEBHOOK_SECRET to repository secrets."
+            exit 0
+          fi
+          echo "✓ Webhook URL configured"
+
+      - name: Trigger remote server webhook
+        env:
+          WEBHOOK_URL: ${{ secrets.WEBHOOK_URL }}
+          WEBHOOK_SECRET: ${{ secrets.WEBHOOK_SECRET }}
+        run: |
+          PAYLOAD=$(cat <<EOF
+          {
+            "ref": "${{ github.event.workflow_run.head_branch }}",
+            "sha": "${{ github.event.workflow_run.head_sha }}",
+            "repository": "${{ github.repository }}",
+            "workflow": "${{ github.event.workflow_run.name }}",
+            "status": "${{ github.event.workflow_run.conclusion }}",
+            "event": "${{ github.event_name }}"
+          }
+          EOF
+          )
+          
+          # Generate signature if secret is provided
+          if [ -n "$WEBHOOK_SECRET" ]; then
+            SIGNATURE=$(echo -n "$PAYLOAD" | openssl dgst -sha256 -hmac "$WEBHOOK_SECRET" | cut -d' ' -f2)
+            SIGNATURE_HEADER="sha256=$SIGNATURE"
+          else
+            SIGNATURE_HEADER=""
+          fi
+          
+          # Build curl command
+          CURL_CMD="curl -X POST \"$WEBHOOK_URL\" \
+            -H \"Content-Type: application/json\" \
+            -H \"X-GitHub-Event: workflow_run\""
+          
+          if [ -n "$SIGNATURE_HEADER" ]; then
+            CURL_CMD="$CURL_CMD -H \"X-Hub-Signature-256: $SIGNATURE_HEADER\""
+          fi
+          
+          CURL_CMD="$CURL_CMD -d '$PAYLOAD' \
+            --max-time 30 \
+            --retry 2 \
+            --retry-delay 5 \
+            -w '\nHTTP Status: %{http_code}\n'"
+          
+          echo "Triggering webhook..."
+          eval $CURL_CMD || {
+            echo "⚠️ Webhook request failed (non-critical - deployment will continue)"
+            exit 0
+          }
+          
+          echo "✓ Webhook triggered successfully"
+

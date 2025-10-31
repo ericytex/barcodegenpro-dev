@@ -38,7 +38,8 @@ export function TokenProvider({ children }: { children: ReactNode }) {
 
     try {
       const apiConfig = getApiConfig();
-      const url = apiConfig.baseUrl.startsWith('/') 
+      // If baseUrl already ends with /api, don't add it again
+      const url = apiConfig.baseUrl.endsWith('/api') 
         ? `${apiConfig.baseUrl}/tokens/balance`
         : `${apiConfig.baseUrl}/api/tokens/balance`;
       const response = await fetch(url, {
@@ -76,7 +77,11 @@ export function TokenProvider({ children }: { children: ReactNode }) {
 
     try {
       const apiConfig = getApiConfig();
-      const response = await fetch(`${apiConfig.baseUrl}/api/tokens/purchase`, {
+      // If baseUrl already ends with /api, don't add it again
+      const purchaseUrl = apiConfig.baseUrl.endsWith('/api') 
+        ? `${apiConfig.baseUrl}/tokens/purchase`
+        : `${apiConfig.baseUrl}/api/tokens/purchase`;
+      const response = await fetch(purchaseUrl, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,

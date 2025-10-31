@@ -13,6 +13,7 @@ export interface MenuSettings {
   settings: boolean;
   collections: boolean;
   features: boolean;
+  howTo: boolean;
 }
 
 interface MenuContextType {
@@ -34,6 +35,7 @@ const defaultMenuSettings: MenuSettings = {
   settings: true,
   collections: true,
   features: true,
+  howTo: true,
 };
 
 const MenuContext = createContext<MenuContextType | undefined>(undefined);

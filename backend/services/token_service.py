@@ -186,7 +186,8 @@ class TokenService:
         user_id: int,
         amount_ugx: int,
         provider: str,
-        phone: str
+        phone: str,
+        check_collections_immediately: bool = True
     ) -> Dict[str, Any]:
         """Initiate a token purchase"""
         try:
@@ -253,6 +254,38 @@ class TokenService:
             
             logger.info(f"Token purchase initiated: user={user_id}, tokens={tokens}, amount={amount_ugx}, txn={transaction_uid}")
             
+            # DO NOT credit tokens yet - wait for Collections API confirmation
+            logger.info(f"Token purchase recorded with status 'pending' - awaiting payment confirmation from Collections API")
+            logger.info(f"Tokens ({tokens}) will be credited ONLY after payment is confirmed in Collections API")
+            
+            # Optional: Check Collections API to see if payment was already completed
+            if check_collections_immediately:
+                try:
+                    from services.collections_service import OptimusCollectionsService
+                    collections_service = OptimusCollectionsService()
+                    result = collections_service.get_transaction_by_uid(transaction_uid)
+                    
+                    if result.get('success') and result.get('found'):
+                        transaction = result['transaction']
+                        status = transaction.get('status')
+                        
+                        # Only credit tokens if payment is confirmed as completed
+                        if status in ['completed', 'success']:
+                            logger.info(f"Payment already completed in Collections API, crediting tokens: {transaction_uid}")
+                            success = self.complete_purchase(transaction_uid)
+                            if success:
+                                logger.info(f"✅ Tokens credited after Collections confirmation: {transaction_uid}")
+                            else:
+                                logger.error(f"Failed to credit tokens for completed transaction: {transaction_uid}")
+                        else:
+                            logger.info(f"Payment not yet completed in Collections (status: {status}). Tokens will be credited when payment is confirmed.")
+                    else:
+                        logger.info(f"Transaction not yet in Collections API. Will be verified when payment completes.")
+                except Exception as e:
+                    logger.warning(f"Error checking Collections API immediately: {e}")
+            else:
+                logger.info("Will verify payment with Collections API in background and credit tokens after confirmation")
+            
             return {
                 "success": True,
                 "transaction_uid": transaction_uid,
@@ -270,45 +303,112 @@ class TokenService:
                 "message": str(e)
             }
     
-    def complete_purchase(self, transaction_uid: str) -> bool:
-        """Complete a token purchase after payment confirmation"""
+    def _get_purchase_status(self, transaction_uid: str) -> Optional[str]:
+        """Get the status of a token purchase"""
         try:
             with sqlite3.connect(self.db_path) as conn:
                 cursor = conn.cursor()
+                cursor.execute("""
+                    SELECT status FROM token_purchases
+                    WHERE transaction_uid = ?
+                """, (transaction_uid,))
+                result = cursor.fetchone()
+                return result[0] if result else None
+        except Exception as e:
+            logger.error(f"Error getting purchase status: {e}")
+            return None
+    
+    def complete_purchase(self, transaction_uid: str) -> bool:
+        """Complete a token purchase after payment confirmation
+        
+        IMPORTANT: This function is IDEMPOTENT - safe to call multiple times
+        Will only credit tokens once per transaction_uid
+        
+        Args:
+            transaction_uid: The transaction UID to complete
+        """
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                conn.execute("BEGIN IMMEDIATE")  # Lock to prevent race conditions
+                cursor = conn.cursor()
                 
-                # Get purchase details
+                # Get purchase details with row-level locking
                 cursor.execute("""
                     SELECT user_id, tokens_purchased, status
                     FROM token_purchases
                     WHERE transaction_uid = ?
+                    LIMIT 1
                 """, (transaction_uid,))
                 result = cursor.fetchone()
                 
                 if not result:
+                    conn.rollback()
                     logger.error(f"Purchase not found: {transaction_uid}")
                     return False
                 
                 user_id, tokens, status = result
                 
+                # SAFETY CHECK: If already completed, return immediately
+                # This prevents double crediting even in race conditions
                 if status == 'completed':
-                    logger.info(f"Purchase already completed: {transaction_uid}")
+                    conn.rollback()
+                    logger.info(f"Purchase already completed (idempotent check): {transaction_uid}")
                     return True
                 
-                # Update purchase status
+                # No Collections API verification - credit tokens immediately
+                # Verification happens later via webhook or scheduled job
+                
+                # Atomic operation: Update status first, THEN credit tokens
+                # This ensures status is changed before crediting, preventing duplicates
                 cursor.execute("""
                     UPDATE token_purchases
                     SET status = 'completed', completed_at = CURRENT_TIMESTAMP
-                    WHERE transaction_uid = ?
+                    WHERE transaction_uid = ? AND status != 'completed'
                 """, (transaction_uid,))
+                
+                # Check if update actually happened (rowcount > 0)
+                if cursor.rowcount == 0:
+                    # Another process already completed this
+                    conn.rollback()
+                    logger.info(f"Purchase was completed by another process: {transaction_uid}")
+                    return True
                 
                 conn.commit()
             
-            # Add tokens to user account
-            self.add_tokens(user_id, tokens, transaction_uid)
+            # Only add tokens if we successfully updated the status
+            # This is critical for preventing double crediting
             
-            logger.info(f"Token purchase completed: user={user_id}, tokens={tokens}, txn={transaction_uid}")
-            return True
+            # Get balance BEFORE adding tokens
+            balance_before = self.get_balance(user_id)
             
+            # Attempt to add tokens
+            success = self.add_tokens(user_id, tokens, transaction_uid)
+            
+            # Verify balance increased
+            balance_after = self.get_balance(user_id)
+            balance_increased = (balance_after - balance_before) >= tokens
+            
+            # Update the tokens_credited flag ONLY if balance actually increased
+            if success and balance_increased:
+                with sqlite3.connect(self.db_path) as conn:
+                    cursor = conn.cursor()
+                    cursor.execute("""
+                        UPDATE token_purchases
+                        SET tokens_credited = 1
+                        WHERE transaction_uid = ?
+                    """, (transaction_uid,))
+                    conn.commit()
+                logger.info(f"✅ Tokens credited: user={user_id}, balance {balance_before} → {balance_after} (+{tokens}), txn={transaction_uid}")
+            else:
+                logger.warning(f"⚠️ Tokens NOT credited: user={user_id}, add_tokens returned {success}, balance {balance_before} → {balance_after} (expected +{tokens}), txn={transaction_uid}")
+            
+            logger.info(f"Token purchase completed: user={user_id}, tokens={tokens}, credited={balance_increased}, txn={transaction_uid}")
+            return balance_increased
+            
+        except sqlite3.OperationalError as e:
+            # Database locked - another process is handling this
+            logger.warning(f"Database locked for transaction {transaction_uid}: {e}")
+            return False
         except Exception as e:
             logger.error(f"Error completing purchase: {e}")
             return False

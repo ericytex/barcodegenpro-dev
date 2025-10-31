@@ -34,3 +34,6 @@ httpx>=0.25.0
 requests>=2.31.0
 pydantic[email]
 sqlalchemy
+
+# Scheduling for background jobs
+APScheduler>=3.10.4

@@ -41,7 +41,7 @@ export class TemplateManager {
       const { getApiConfig } = await import('@/lib/api');
       const { baseUrl, apiKey } = getApiConfig();
       
-      const response = await fetch(`${baseUrl}/api/templates`, {
+      const response = await fetch(`${baseUrl}/templates`, {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',

@@ -50,8 +50,11 @@ const App = () => (
                 <Route path="/dashboard" element={<ProtectedRoute><Index /></ProtectedRoute>} />
                 <Route path="/how-to" element={<ProtectedRoute><HowToPage /></ProtectedRoute>} />
                 <Route path="/test" element={<ProtectedRoute><TestPage /></ProtectedRoute>} />
+                <Route path="/api-test" element={<ProtectedRoute><TestPage /></ProtectedRoute>} />
                 <Route path="/upload" element={<ProtectedRoute><UploadPage /></ProtectedRoute>} />
+                <Route path="/upload-excel" element={<ProtectedRoute><UploadPage /></ProtectedRoute>} />
                 <Route path="/preview" element={<ProtectedRoute><PreviewPage /></ProtectedRoute>} />
+                <Route path="/data-preview" element={<ProtectedRoute><PreviewPage /></ProtectedRoute>} />
                 <Route path="/generate" element={<ProtectedRoute><GeneratePage /></ProtectedRoute>} />
                 <Route path="/downloads" element={<ProtectedRoute><DownloadsPage /></ProtectedRoute>} />
                 <Route path="/settings" element={<ProtectedRoute><SettingsPageNew /></ProtectedRoute>} />

@@ -39,7 +39,9 @@ export const TokenAssignment: React.FC<TokenAssignmentProps> = ({ isSuperAdmin }
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const { refreshBalance } = useTokens();
 
-  const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8034';
+  // In production, VITE_API_BASE_URL is '/api' 
+  // But when testing locally, it might be 'http://localhost:8034'
+  const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
 
   useEffect(() => {
     if (isSuperAdmin) {
@@ -51,7 +53,10 @@ export const TokenAssignment: React.FC<TokenAssignmentProps> = ({ isSuperAdmin }
     setLoadingUsers(true);
     try {
       const token = localStorage.getItem('access_token');
-      const response = await fetch(`${API_BASE_URL}/api/admin/users`, {
+      const usersUrl = API_BASE_URL.endsWith('/api') 
+        ? `${API_BASE_URL}/admin/users`
+        : `${API_BASE_URL}/api/admin/users`;
+      const response = await fetch(usersUrl, {
         headers: {
           'Authorization': `Bearer ${token}`,
         },
@@ -88,8 +93,10 @@ export const TokenAssignment: React.FC<TokenAssignmentProps> = ({ isSuperAdmin }
 
     try {
       const token = localStorage.getItem('access_token');
-      const response = await fetch(
-        `${API_BASE_URL}/api/tokens/admin/grant?user_id=${selectedUserId}&tokens=${tokens}&reason=${encodeURIComponent(reason || 'Super admin grant')}`,
+      const grantUrl = API_BASE_URL.endsWith('/api') 
+        ? `${API_BASE_URL}/tokens/admin/grant?user_id=${selectedUserId}&tokens=${tokens}&reason=${encodeURIComponent(reason || 'Super admin grant')}`
+        : `${API_BASE_URL}/api/tokens/admin/grant?user_id=${selectedUserId}&tokens=${tokens}&reason=${encodeURIComponent(reason || 'Super admin grant')}`;
+      const response = await fetch(grantUrl,
         {
           method: 'POST',
           headers: {

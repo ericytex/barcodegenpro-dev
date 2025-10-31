@@ -63,12 +63,12 @@ export default function SubscriptionPage() {
       
       // Load plans and status in parallel
       const [plansResponse, statusResponse] = await Promise.all([
-        fetch(`${apiConfig.baseUrl}/api/payments/plans`, {
+        fetch(`${apiConfig.baseUrl}/payments/plans`, {
           headers: {
             'X-API-Key': apiConfig.apiKey,
           },
         }),
-        fetch(`${apiConfig.baseUrl}/api/payments/status`, {
+        fetch(`${apiConfig.baseUrl}/payments/status`, {
           headers: {
             'X-API-Key': apiConfig.apiKey,
           },
@@ -103,7 +103,7 @@ export default function SubscriptionPage() {
     
     try {
       const apiConfig = getApiConfig();
-      const response = await fetch(`${apiConfig.baseUrl}/api/payments/subscribe`, {
+      const response = await fetch(`${apiConfig.baseUrl}/payments/subscribe`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -156,7 +156,7 @@ export default function SubscriptionPage() {
   const testPaymentCompletion = async (transactionUid: string) => {
     try {
       const apiConfig = getApiConfig();
-      const response = await fetch(`${apiConfig.baseUrl}/api/payments/test-payment`, {
+      const response = await fetch(`${apiConfig.baseUrl}/payments/test-payment`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

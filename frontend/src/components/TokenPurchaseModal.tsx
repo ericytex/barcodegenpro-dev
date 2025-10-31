@@ -75,6 +75,8 @@ export function TokenPurchaseModal({ open, onClose, requiredTokens }: TokenPurch
   const [isProcessing, setIsProcessing] = useState(false);
   const [showPaymentInstructions, setShowPaymentInstructions] = useState(false);
   const [paymentData, setPaymentData] = useState<any>(null);
+  const [isWaitingForConfirmation, setIsWaitingForConfirmation] = useState(false);
+  const [checkInterval, setCheckInterval] = useState<NodeJS.Timeout | null>(null);
   const [tokenSettings, setTokenSettings] = useState({
     min_purchase_tokens: 10,
     token_price_ugx: 500
@@ -89,7 +91,7 @@ export function TokenPurchaseModal({ open, onClose, requiredTokens }: TokenPurch
     const fetchTokenSettings = async () => {
       try {
         const baseUrl = apiService.getEnvironmentConfig().baseUrl;
-        const url = baseUrl.startsWith('/') 
+        const url = baseUrl.endsWith('/api') 
           ? `${baseUrl}/tokens/admin/token-settings`
           : `${baseUrl}/api/tokens/admin/token-settings`;
         const response = await fetch(url, {
@@ -116,6 +118,72 @@ export function TokenPurchaseModal({ open, onClose, requiredTokens }: TokenPurch
     setSelectedPackage(index);
     setCustomAmount('');
   };
+
+  // Check if tokens were confirmed via Collections API
+  useEffect(() => {
+    if (isWaitingForConfirmation && paymentData?.transaction_uid) {
+      const interval = setInterval(async () => {
+        try {
+          // Call the verification endpoint to check Collections API
+          const baseUrl = apiService.getEnvironmentConfig().baseUrl;
+          const url = baseUrl.endsWith('/api') 
+            ? `${baseUrl}/tokens/verify-transaction/${paymentData.transaction_uid}`
+            : `${baseUrl}/api/tokens/verify-transaction/${paymentData.transaction_uid}`;
+          
+          const response = await fetch(url, {
+            headers: {
+              'Authorization': `Bearer ${localStorage.getItem('access_token')}`,
+              'Content-Type': 'application/json'
+            }
+          });
+          
+          if (response.ok) {
+            const result = await response.json();
+            
+            if (result.confirmed && result.tokens_credited) {
+              // Payment confirmed and tokens credited!
+              setIsWaitingForConfirmation(false);
+              if (checkInterval) {
+                clearInterval(checkInterval);
+              }
+              
+              console.log('✅ Tokens confirmed and credited! Refreshing balance...');
+              
+              toast.success('Tokens confirmed!', {
+                description: `Your ${paymentData.tokens_purchased} tokens have been added`,
+              });
+              
+              // Refresh balance to show new tokens - with multiple retries
+              await refreshBalance();
+              // Small delay then refresh again to ensure UI updates
+              setTimeout(async () => {
+                console.log('Refreshing balance again to ensure update...');
+                await refreshBalance();
+              }, 500);
+              
+              // Close modal after a short delay
+              setTimeout(() => {
+                onClose();
+              }, 2000);
+              
+            } else if (result.confirmed && !result.tokens_credited) {
+              // Confirmed but crediting failed - retry
+              console.log('Transaction confirmed but token crediting failed, retrying...');
+            }
+            // If not confirmed yet, keep waiting
+          }
+        } catch (error) {
+          console.error('Error checking token confirmation:', error);
+        }
+      }, 1000); // Check every 1 second
+      
+      setCheckInterval(interval);
+      
+      return () => {
+        if (interval) clearInterval(interval);
+      };
+    }
+  }, [isWaitingForConfirmation, paymentData, refreshBalance]);
 
   const handlePurchase = async () => {
     let amount = 0;
@@ -147,6 +215,7 @@ export function TokenPurchaseModal({ open, onClose, requiredTokens }: TokenPurch
       if (result.success) {
         setPaymentData(result);
         setShowPaymentInstructions(true);
+        setIsWaitingForConfirmation(true);
         toast.success('Payment initiated!', {
           description: `Please complete payment on your phone for ${calculateTokens(amount)} tokens`,
         });
@@ -192,7 +261,7 @@ export function TokenPurchaseModal({ open, onClose, requiredTokens }: TokenPurch
                 Payment Request Sent
               </div>
               <p className="text-sm text-green-600 dark:text-green-400">
-                A payment prompt has been sent to {phone}
+                A payment prompt has been sent to {phone}. Please complete the payment on your phone.
               </p>
             </Card>
 
@@ -215,17 +284,39 @@ export function TokenPurchaseModal({ open, onClose, requiredTokens }: TokenPurch
               </p>
             </div>
 
+            {/* Loading Spinner - Waiting for payment confirmation */}
+            {isWaitingForConfirmation && (
+              <Card className="p-4 bg-amber-50 dark:bg-amber-950 border-amber-200 dark:border-amber-800">
+                <div className="flex items-center gap-3">
+                  <Loader2 className="h-6 w-6 text-amber-600 animate-spin" />
+                  <div className="flex-1">
+                    <p className="font-semibold text-amber-800 dark:text-amber-200">
+                      Verifying your payment...
+                    </p>
+                    <p className="text-sm text-amber-700 dark:text-amber-300 mt-1">
+                      Please wait while we process your transaction. This usually takes a few seconds.
+                    </p>
+                  </div>
+                </div>
+              </Card>
+            )}
+
             <div className="flex gap-2">
               <Button 
                 onClick={() => {
+                  if (checkInterval) {
+                    clearInterval(checkInterval);
+                  }
+                  setIsWaitingForConfirmation(false);
                   refreshBalance();
                   onClose();
                   setShowPaymentInstructions(false);
                   setPaymentData(null);
                 }} 
                 className="flex-1"
+                disabled={isWaitingForConfirmation}
               >
-                Done
+                {isWaitingForConfirmation ? 'Waiting...' : 'Done'}
               </Button>
             </div>
           </div>

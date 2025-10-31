@@ -17,6 +17,7 @@ import { TokenAssignment } from "@/components/TokenAssignment";
 import { useMenuSettings } from "@/contexts/MenuContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { Input } from "@/components/ui/input";
+import { toast } from "sonner";
 
 interface PaymentProvider {
   id: string;
@@ -96,6 +97,15 @@ const SettingsPageNew = () => {
     expires_at: ''
   });
 
+  // Profile state
+  const [profile, setProfile] = useState({
+    full_name: user?.full_name || user?.username || '',
+    email: user?.email || '',
+    bio: ''
+  });
+  const [isSavingProfile, setIsSavingProfile] = useState(false);
+  const [showSecuritySettings, setShowSecuritySettings] = useState(false);
+
   // Navigation items
   const navigationItems = [
     { id: 'profile', label: 'Profile', icon: User },
@@ -133,6 +143,38 @@ const SettingsPageNew = () => {
     }
   }, [user]);
 
+  // Profile save handler
+  const handleSaveProfile = async () => {
+    setIsSavingProfile(true);
+    try {
+      const apiConfig = apiService.getEnvironmentConfig();
+      const baseUrl = apiConfig.baseUrl.endsWith('/api') ? apiConfig.baseUrl : apiConfig.baseUrl;
+      const profileUrl = baseUrl.endsWith('/api') 
+        ? `${baseUrl}/auth/profile`
+        : `${baseUrl}/api/auth/profile`;
+      const response = await fetch(profileUrl, {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('access_token')}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(profile)
+      });
+
+      if (response.ok) {
+        alert('Profile updated successfully!');
+      } else {
+        const error = await response.json();
+        alert(`Error updating profile: ${error.detail || 'Unknown error'}`);
+      }
+    } catch (error) {
+      console.error('Error saving profile:', error);
+      alert('Error saving profile');
+    } finally {
+      setIsSavingProfile(false);
+    }
+  };
+
   // Mobile detection and responsive handling
 
   const loadPaymentSettings = async () => {
@@ -141,7 +183,7 @@ const SettingsPageNew = () => {
     setIsLoadingPaymentSettings(true);
     try {
       const baseUrl = apiService.getEnvironmentConfig().baseUrl;
-      const url = baseUrl.startsWith('/') 
+      const url = baseUrl.endsWith('/api') 
         ? `${baseUrl}/tokens/admin/payment-settings`
         : `${baseUrl}/api/tokens/admin/payment-settings`;
       const response = await fetch(url, {
@@ -168,7 +210,7 @@ const SettingsPageNew = () => {
     setIsSavingPaymentSettings(true);
     try {
       const baseUrl = apiService.getEnvironmentConfig().baseUrl;
-      const url = baseUrl.startsWith('/') 
+      const url = baseUrl.endsWith('/api') 
         ? `${baseUrl}/tokens/admin/payment-settings`
         : `${baseUrl}/api/tokens/admin/payment-settings`;
       const response = await fetch(url, {
@@ -202,7 +244,7 @@ const SettingsPageNew = () => {
     setIsLoadingCollectionsSettings(true);
     try {
       const baseUrl = apiService.getEnvironmentConfig().baseUrl;
-      const url = baseUrl.startsWith('/') 
+      const url = baseUrl.endsWith('/api') 
         ? `${baseUrl}/tokens/admin/collections-settings`
         : `${baseUrl}/api/tokens/admin/collections-settings`;
       const response = await fetch(url, {
@@ -229,7 +271,7 @@ const SettingsPageNew = () => {
     setIsSavingCollectionsSettings(true);
     try {
       const baseUrl = apiService.getEnvironmentConfig().baseUrl;
-      const url = baseUrl.startsWith('/') 
+      const url = baseUrl.endsWith('/api') 
         ? `${baseUrl}/tokens/admin/collections-settings`
         : `${baseUrl}/api/tokens/admin/collections-settings`;
       const response = await fetch(url, {
@@ -262,7 +304,7 @@ const SettingsPageNew = () => {
     setIsLoadingTokenSettings(true);
     try {
       const baseUrl = apiService.getEnvironmentConfig().baseUrl;
-      const url = baseUrl.startsWith('/') 
+      const url = baseUrl.endsWith('/api') 
         ? `${baseUrl}/tokens/admin/token-settings`
         : `${baseUrl}/api/tokens/admin/token-settings`;
       const response = await fetch(url, {
@@ -289,7 +331,10 @@ const SettingsPageNew = () => {
     setIsSavingTokenSettings(true);
     try {
       const baseUrl = apiService.getEnvironmentConfig().baseUrl;
-      const response = await fetch(`${baseUrl}/api/tokens/admin/token-settings`, {
+      const tokenSettingsUrl = baseUrl.endsWith('/api') 
+        ? `${baseUrl}/tokens/admin/token-settings`
+        : `${baseUrl}/api/tokens/admin/token-settings`;
+      const response = await fetch(tokenSettingsUrl, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('access_token')}`,
@@ -319,7 +364,10 @@ const SettingsPageNew = () => {
     setIsLoadingBanners(true);
     try {
       const baseUrl = apiService.getEnvironmentConfig().baseUrl;
-      const response = await fetch(`${baseUrl}/api/banners`, {
+      const bannersUrl = baseUrl.endsWith('/api') 
+        ? `${baseUrl}/banners`
+        : `${baseUrl}/api/banners`;
+      const response = await fetch(bannersUrl, {
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('access_token')}`
         }
@@ -341,7 +389,10 @@ const SettingsPageNew = () => {
     
     try {
       const baseUrl = apiService.getEnvironmentConfig().baseUrl;
-      const response = await fetch(`${baseUrl}/api/banners`, {
+      const bannersUrl = baseUrl.endsWith('/api') 
+        ? `${baseUrl}/banners`
+        : `${baseUrl}/api/banners`;
+      const response = await fetch(bannersUrl, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('access_token')}`,
@@ -375,7 +426,10 @@ const SettingsPageNew = () => {
     
     try {
       const baseUrl = apiService.getEnvironmentConfig().baseUrl;
-      const response = await fetch(`${baseUrl}/api/banners/${bannerId}/status`, {
+      const bannerStatusUrl = baseUrl.endsWith('/api') 
+        ? `${baseUrl}/banners/${bannerId}/status`
+        : `${baseUrl}/api/banners/${bannerId}/status`;
+      const response = await fetch(bannerStatusUrl, {
         method: 'PATCH',
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('access_token')}`,
@@ -405,7 +459,10 @@ const SettingsPageNew = () => {
     
     try {
       const baseUrl = apiService.getEnvironmentConfig().baseUrl;
-      const response = await fetch(`${baseUrl}/api/banners/${bannerId}`, {
+      const deleteBannerUrl = baseUrl.endsWith('/api') 
+        ? `${baseUrl}/banners/${bannerId}`
+        : `${baseUrl}/api/banners/${bannerId}`;
+      const response = await fetch(deleteBannerUrl, {
         method: 'DELETE',
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('access_token')}`
@@ -499,6 +556,8 @@ const SettingsPageNew = () => {
             <label className="text-sm font-medium text-gray-700">Full Name</label>
             <input
               type="text"
+              value={profile.full_name}
+              onChange={(e) => setProfile({...profile, full_name: e.target.value})}
               placeholder="Enter your full name"
               className="w-full px-4 py-3 border border-gray-200 rounded-xl bg-gray-50 focus:bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all duration-200 text-gray-900 placeholder-gray-500"
             />
@@ -509,6 +568,8 @@ const SettingsPageNew = () => {
             <label className="text-sm font-medium text-gray-700">Email Address</label>
             <input
               type="email"
+              value={profile.email}
+              onChange={(e) => setProfile({...profile, email: e.target.value})}
               placeholder="Enter your email address"
               className="w-full px-4 py-3 border border-gray-200 rounded-xl bg-gray-50 focus:bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all duration-200 text-gray-900 placeholder-gray-500"
             />
@@ -518,6 +579,8 @@ const SettingsPageNew = () => {
           <div className="space-y-2">
             <label className="text-sm font-medium text-gray-700">Bio</label>
             <textarea
+              value={profile.bio}
+              onChange={(e) => setProfile({...profile, bio: e.target.value})}
               placeholder="Tell us about yourself..."
               rows={4}
               className="w-full px-4 py-3 border border-gray-200 rounded-xl bg-gray-50 focus:bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all duration-200 text-gray-900 placeholder-gray-500 resize-none"
@@ -526,8 +589,12 @@ const SettingsPageNew = () => {
 
           {/* Save Button */}
           <div className="pt-4">
-            <button className="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-3 px-6 rounded-xl transition-colors duration-200 shadow-sm">
-              Save Changes
+            <button 
+              onClick={handleSaveProfile}
+              disabled={isSavingProfile}
+              className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white font-medium py-3 px-6 rounded-xl transition-colors duration-200 shadow-sm"
+            >
+              {isSavingProfile ? 'Saving...' : 'Save Changes'}
             </button>
           </div>
         </div>
@@ -1009,9 +1076,12 @@ const SettingsPageNew = () => {
               </div>
               <div className="flex items-center gap-2">
                 <span className="text-xs text-gray-500">{value ? 'On' : 'Off'}</span>
-                <button className={`w-10 h-5 rounded-full relative transition-colors ${
-                  value ? 'bg-blue-600' : 'bg-gray-200'
-                }`}>
+                <button 
+                  onClick={() => updateMenuSetting(key as keyof typeof menuSettings, !value)}
+                  className={`w-10 h-5 rounded-full relative transition-colors ${
+                    value ? 'bg-blue-600' : 'bg-gray-200'
+                  }`}
+                >
                   <div className={`w-4 h-4 bg-white rounded-full absolute top-0.5 transition-transform ${
                     value ? 'right-0.5' : 'left-0.5'
                   }`}></div>
@@ -1753,13 +1823,19 @@ const SettingsPageNew = () => {
           </div>
         </div>
         <div className="p-4 space-y-2">
-          <button className="w-full bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm font-medium py-2 px-3 rounded-md transition-colors">
+          <button 
+            onClick={() => toast.info('Export functionality coming soon')}
+            className="w-full bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm font-medium py-2 px-3 rounded-md transition-colors">
             Export Data
           </button>
-          <button className="w-full bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm font-medium py-2 px-3 rounded-md transition-colors">
+          <button 
+            onClick={() => toast.info('Download Reports functionality coming soon')}
+            className="w-full bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm font-medium py-2 px-3 rounded-md transition-colors">
             Download Reports
           </button>
-          <button className="w-full bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm font-medium py-2 px-3 rounded-md transition-colors">
+          <button 
+            onClick={() => setActiveTab('profile')}
+            className="w-full bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm font-medium py-2 px-3 rounded-md transition-colors">
             Account Settings
           </button>
         </div>
@@ -1787,7 +1863,9 @@ const SettingsPageNew = () => {
             <span className="text-sm font-medium text-gray-900">2h 15m</span>
           </div>
           <div className="pt-2 border-t border-gray-100">
-            <button className="w-full bg-blue-100 hover:bg-blue-200 text-blue-700 text-sm font-medium py-2 px-3 rounded-md transition-colors">
+            <button 
+              onClick={() => toast.info('Activity history coming soon')}
+              className="w-full bg-blue-100 hover:bg-blue-200 text-blue-700 text-sm font-medium py-2 px-3 rounded-md transition-colors">
               View Activity
             </button>
           </div>
@@ -2135,7 +2213,10 @@ const SettingsPageNew = () => {
           {Object.entries(menuSettings).map(([key, value]) => (
             <div key={key} className="flex items-center justify-between">
               <span className="text-sm text-gray-700 capitalize">{key.replace(/([A-Z])/g, ' $1').trim()}</span>
-              <button className={`w-8 h-4 rounded-full relative ${value ? 'bg-blue-600' : 'bg-gray-200'}`}>
+              <button 
+                onClick={() => updateMenuSetting(key as keyof typeof menuSettings, !value)}
+                className={`w-8 h-4 rounded-full relative ${value ? 'bg-blue-600' : 'bg-gray-200'}`}
+              >
                 <div className={`w-3 h-3 bg-white rounded-full absolute top-0.5 transition-transform ${value ? 'right-0.5' : 'left-0.5'}`}></div>
               </button>
             </div>

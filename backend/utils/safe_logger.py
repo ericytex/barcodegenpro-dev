@@ -25,9 +25,10 @@ class SafeLogger:
         if root_logger.hasHandlers():
             root_logger.handlers.clear()
 
-        # Add console handler
+        # Add console handler (errors only)
         console_handler = logging.StreamHandler()
         console_handler.setFormatter(formatter)
+        console_handler.setLevel(logging.ERROR)
         root_logger.addHandler(console_handler)
 
         # Add file handler
@@ -36,6 +37,7 @@ class SafeLogger:
             os.makedirs(log_dir)
         file_handler = logging.FileHandler(os.path.join(log_dir, 'api.log'))
         file_handler.setFormatter(formatter)
+        file_handler.setLevel(log_level)
         root_logger.addHandler(file_handler)
 
         self.logger = logging.getLogger(__name__)

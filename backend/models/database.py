@@ -430,6 +430,30 @@ class DatabaseManager:
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_token_usage_created_at ON token_usage(created_at)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_token_settings_key ON token_settings(setting_key)")
 
+        # Create collections table for Optimus Collections API data
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS collections (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                collection_id TEXT UNIQUE NOT NULL,
+                transaction_uid TEXT,
+                amount INTEGER,
+                currency TEXT,
+                status TEXT,
+                provider TEXT,
+                phone TEXT,
+                created_at TEXT,
+                completed_at TEXT,
+                description TEXT,
+                reference TEXT,
+                synced_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_collections_transaction_uid ON collections(transaction_uid)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_collections_status ON collections(status)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_collections_synced_at ON collections(synced_at)")
+
         # Create features table
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS features (

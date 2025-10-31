@@ -275,7 +275,9 @@ const SamsungGalaxyExcelUpload: React.FC<SamsungGalaxyExcelUploadProps> = ({
 
   const downloadBarcode = (filename: string) => {
     const { baseUrl } = getApiConfig();
-    const downloadUrl = `${baseUrl}/api/barcodes/download/${filename}`;
+    const downloadUrl = baseUrl.endsWith('/api') 
+      ? `${baseUrl}/barcodes/download/${filename}`
+      : `${baseUrl}/api/barcodes/download/${filename}`;
     const link = document.createElement('a');
     link.href = downloadUrl;
     link.download = filename;
@@ -286,13 +288,20 @@ const SamsungGalaxyExcelUpload: React.FC<SamsungGalaxyExcelUploadProps> = ({
 
   const previewPDF = (pdfUrl: string) => {
     const { baseUrl } = getApiConfig();
-    const fullPdfUrl = `${baseUrl}${pdfUrl}`;
+    // If pdfUrl starts with /api/ and baseUrl ends with /api, remove /api from pdfUrl
+    let cleanPdfUrl = pdfUrl;
+    if (baseUrl.endsWith('/api') && pdfUrl.startsWith('/api/')) {
+      cleanPdfUrl = pdfUrl.replace(/^\/api/, '');
+    }
+    const fullPdfUrl = `${baseUrl}${cleanPdfUrl}`;
     window.open(fullPdfUrl, '_blank', 'width=800,height=600');
   };
 
   const previewBarcode = (filename: string) => {
     const { baseUrl } = getApiConfig();
-    const previewUrl = `${baseUrl}/api/barcodes/download/${filename}`;
+    const previewUrl = baseUrl.endsWith('/api') 
+      ? `${baseUrl}/barcodes/download/${filename}`
+      : `${baseUrl}/api/barcodes/download/${filename}`;
     window.open(previewUrl, '_blank');
   };
 

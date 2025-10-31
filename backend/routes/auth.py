@@ -45,6 +45,12 @@ class ChangePasswordRequest(BaseModel):
     new_password: str = Field(..., min_length=6)
 
 
+class UpdateProfileRequest(BaseModel):
+    full_name: Optional[str] = None
+    email: Optional[EmailStr] = None
+    bio: Optional[str] = None
+
+
 class UserResponse(BaseModel):
     id: int
     email: str
@@ -272,4 +278,82 @@ async def change_password(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Password change failed"
+        )
+
+
+@router.put("/profile")
+async def update_profile(
+    request: UpdateProfileRequest,
+    current_user: dict = Depends(get_current_active_user)
+):
+    """Update user profile"""
+    try:
+        import sqlite3
+        
+        with sqlite3.connect("data/barcode_generator.db") as conn:
+            cursor = conn.cursor()
+            
+            # Build update query dynamically based on provided fields
+            update_fields = []
+            update_values = []
+            
+            if request.full_name is not None:
+                update_fields.append("full_name = ?")
+                update_values.append(request.full_name)
+            
+            if request.email is not None:
+                # Check if email already exists for another user
+                cursor.execute("SELECT id FROM users WHERE email = ? AND id != ?", 
+                              (request.email, current_user['id']))
+                if cursor.fetchone():
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail="Email already in use by another user"
+                    )
+                update_fields.append("email = ?")
+                update_values.append(request.email)
+            
+            if request.bio is not None:
+                update_fields.append("bio = ?")
+                update_values.append(request.bio)
+            
+            # Only update if there are fields to update
+            if update_fields:
+                update_values.append(current_user['id'])
+                cursor.execute(f"""
+                    UPDATE users 
+                    SET {', '.join(update_fields)}
+                    WHERE id = ?
+                """, update_values)
+                conn.commit()
+            
+            # Return updated user data
+            cursor.execute("""
+                SELECT id, email, username, full_name, is_active, is_admin, 
+                       created_at, bio
+                FROM users WHERE id = ?
+            """, (current_user['id'],))
+            
+            row = cursor.fetchone()
+            return {
+                "message": "Profile updated successfully",
+                "user": {
+                    "id": row[0],
+                    "email": row[1],
+                    "username": row[2],
+                    "full_name": row[3],
+                    "is_active": bool(row[4]),
+                    "is_admin": bool(row[5]),
+                    "created_at": row[6],
+                    "bio": row[7]
+                }
+            }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Profile update error: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Profile update failed"
         )

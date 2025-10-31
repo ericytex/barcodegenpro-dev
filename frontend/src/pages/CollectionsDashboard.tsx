@@ -80,7 +80,7 @@ const CollectionsDashboard: React.FC = () => {
 
   const loadPaymentsData = async () => {
     try {
-      const url = API_BASE_URL.startsWith('/') 
+      const url = API_BASE_URL.endsWith('/api') 
         ? `${API_BASE_URL}/tokens/admin/purchases?limit=200`
         : `${API_BASE_URL}/api/tokens/admin/purchases?limit=200`;
       const response = await fetch(url, {
@@ -101,7 +101,7 @@ const CollectionsDashboard: React.FC = () => {
   const loadOptimusData = async () => {
     setLoadingOptimus(true);
     try {
-      const url = API_BASE_URL.startsWith('/') 
+      const url = API_BASE_URL.endsWith('/api') 
         ? `${API_BASE_URL}/payments/fetch-all-transactions`
         : `${API_BASE_URL}/api/payments/fetch-all-transactions`;
       const response = await fetch(url, {

@@ -169,7 +169,7 @@ const PaymentsDashboard: React.FC = () => {
         params.append('status', statusFilter);
       }
 
-      const url = API_BASE_URL.startsWith('/') 
+      const url = API_BASE_URL.endsWith('/api') 
         ? `${API_BASE_URL}/tokens/admin/purchases?${params}`
         : `${API_BASE_URL}/api/tokens/admin/purchases?${params}`;
       const response = await fetch(url, {
@@ -184,7 +184,7 @@ const PaymentsDashboard: React.FC = () => {
       
       if (data.success) {
         setPurchases(data);
-        toast.success(`Loaded ${data.purchases.length} token purchases`);
+        // Only show success message, not the count - it's confusing for users
       } else {
         toast.error(data.message || 'Failed to load token purchases');
       }
@@ -299,7 +299,7 @@ const PaymentsDashboard: React.FC = () => {
   const syncWithPaymentProvider = async (isAutomatic = false) => {
     setSyncing(true);
     try {
-      const response = await fetch(`${API_BASE_URL}/api/payments/sync-with-optimus?limit=${limit}`, {
+      const response = await fetch(`${API_BASE_URL}/payments/sync-with-optimus?limit=${limit}`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('access_token')}`

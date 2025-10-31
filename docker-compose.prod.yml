@@ -1,0 +1,84 @@
+version: '3.8'
+
+# Production docker-compose file for remote server
+# Uses pre-built images from GHCR (no local builds)
+
+services:
+  # Backend API
+  backend:
+    image: ghcr.io/ericytex/barcode-backend:latest
+    container_name: barcode-v2-backend
+    restart: unless-stopped
+    ports:
+      - "8034:8034"
+    environment:
+      - API_HOST=0.0.0.0
+      - API_PORT=8034
+      - PYTHONUNBUFFERED=1
+      - API_WORKERS=2
+      - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost,http://localhost:8080,http://localhost:80}
+      - SECRET_KEY=${SECRET_KEY}
+      - DATABASE_PATH=${DATABASE_PATH:-/app/data/barcode_generator.db}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - LOG_FILE=/app/logs/app.log
+      - UPLOAD_DIR=/app/uploads
+      - DOWNLOAD_DIR=/app/downloads
+      - LOGS_DIR=/app/logs
+    volumes:
+      # Production: use named volumes for data persistence
+      - backend-data-prod:/app/data
+      - backend-uploads-prod:/app/uploads
+      - backend-downloads-prod:/app/downloads
+      - backend-logs-prod:/app/logs
+      - backend-archives-prod:/app/archives
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8034/healthz"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: '0.5'
+        reservations:
+          memory: 256M
+          cpus: '0.25'
+    networks:
+      - barcode-v2-network
+
+  # Frontend (Nginx serving React build)
+  frontend:
+    image: ghcr.io/ericytex/barcode-frontend:latest
+    container_name: barcode-v2-frontend
+    restart: unless-stopped
+    ports:
+      - "8080:80"
+    depends_on:
+      - backend
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost/healthz"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+    networks:
+      - barcode-v2-network
+
+volumes:
+  backend-data-prod:
+    driver: local
+  backend-uploads-prod:
+    driver: local
+  backend-downloads-prod:
+    driver: local
+  backend-logs-prod:
+    driver: local
+  backend-archives-prod:
+    driver: local
+
+networks:
+  barcode-v2-network:
+    driver: bridge
+

@@ -44,7 +44,7 @@ export default function OnboardingPage() {
       const apiConfig = getApiConfig();
       const url = apiConfig.baseUrl.startsWith('/') 
         ? `${apiConfig.baseUrl}/payments/status`
-        : `${apiConfig.baseUrl}/api/payments/status`;
+        : `${apiConfig.baseUrl}/payments/status`;
       const response = await fetch(url, {
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -69,7 +69,7 @@ export default function OnboardingPage() {
       const apiConfig = getApiConfig();
       const url = apiConfig.baseUrl.startsWith('/') 
         ? `${apiConfig.baseUrl}/payments/plans`
-        : `${apiConfig.baseUrl}/api/payments/plans`;
+        : `${apiConfig.baseUrl}/payments/plans`;
       const response = await fetch(url, {
         headers: {
           'X-API-Key': apiConfig.apiKey,
@@ -107,7 +107,7 @@ export default function OnboardingPage() {
 
       const url = apiConfig.baseUrl.startsWith('/') 
         ? `${apiConfig.baseUrl}/payments/subscribe`
-        : `${apiConfig.baseUrl}/api/payments/subscribe`;
+        : `${apiConfig.baseUrl}/payments/subscribe`;
       const response = await fetch(url, {
         method: 'POST',
         headers: {
@@ -152,7 +152,7 @@ export default function OnboardingPage() {
     const checkStatus = async () => {
       try {
         const apiConfig = getApiConfig();
-        const url = apiConfig.baseUrl.startsWith('/') 
+        const url = apiConfig.baseUrl.endsWith('/api') 
           ? `${apiConfig.baseUrl}/payments/status`
           : `${apiConfig.baseUrl}/api/payments/status`;
         const response = await fetch(url, {
@@ -617,7 +617,7 @@ export default function OnboardingPage() {
                       // For testing - simulate payment completion
                       if (paymentTransactionUid) {
                         const apiConfig = getApiConfig();
-                        const apiUrl = apiConfig.baseUrl.startsWith('/') 
+                        const apiUrl = apiConfig.baseUrl.endsWith('/api') 
                           ? `${apiConfig.baseUrl}/payments/test-payment?transaction_uid=${paymentTransactionUid}`
                           : `${apiConfig.baseUrl}/api/payments/test-payment?transaction_uid=${paymentTransactionUid}`;
                         fetch(apiUrl, {

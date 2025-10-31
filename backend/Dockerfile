@@ -30,6 +30,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     fonts-liberation \
     && rm -rf /var/lib/apt/lists/*
 
+# Install requests for test script
+RUN pip install --user --break-system-packages requests
+
 # Copy Python dependencies from builder
 COPY --from=builder /root/.local /root/.local
 
@@ -43,6 +46,9 @@ COPY . .
 RUN mkdir -p data uploads downloads logs archives && \
     chmod -R 755 data uploads downloads logs archives
 
+# Make test scripts executable
+RUN chmod +x test_all_endpoints.py start_api_with_tests.sh
+
 # Expose port
 EXPOSE 8034
 
@@ -51,4 +57,4 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
     CMD curl -f http://localhost:8034/healthz || exit 1
 
 # Run the application
-CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8034", "--workers", "2"]
+CMD ["bash", "-c", "uvicorn app:app --host 0.0.0.0 --port 8034 --workers 2"]

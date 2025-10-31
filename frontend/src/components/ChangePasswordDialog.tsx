@@ -77,7 +77,7 @@ export const ChangePasswordDialog: React.FC<ChangePasswordDialogProps> = ({ chil
 
     try {
       const token = localStorage.getItem('access_token');
-      const response = await fetch(`${API_BASE_URL}/api/auth/change-password`, {
+      const response = await fetch(`${API_BASE_URL}/auth/change-password`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,

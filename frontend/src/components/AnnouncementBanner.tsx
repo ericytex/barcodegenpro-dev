@@ -30,7 +30,8 @@ const AnnouncementBanner: React.FC<AnnouncementBannerProps> = ({ className = '' 
     try {
       setIsLoading(true);
       const baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8034';
-      const url = baseUrl.startsWith('/') 
+      // If baseUrl already ends with /api, don't add it again
+      const url = baseUrl.endsWith('/api') 
         ? `${baseUrl}/banners/active`
         : `${baseUrl}/api/banners/active`;
       const response = await fetch(url, {

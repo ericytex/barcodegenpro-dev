@@ -62,7 +62,10 @@ const UserManager: React.FC<UserManagerProps> = ({ isSuperAdmin }) => {
     setLoading(true);
     try {
       const baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8034';
-      const response = await fetch(`${baseUrl}/api/admin/users`, {
+      const usersUrl = baseUrl.endsWith('/api') 
+        ? `${baseUrl}/admin/users`
+        : `${baseUrl}/api/admin/users`;
+      const response = await fetch(usersUrl, {
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('access_token')}`
         }
@@ -86,7 +89,10 @@ const UserManager: React.FC<UserManagerProps> = ({ isSuperAdmin }) => {
   const updateUserRole = async (userId: number, field: 'is_admin' | 'is_super_admin', value: boolean) => {
     try {
       const baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8034';
-      const response = await fetch(`${baseUrl}/api/admin/users/${userId}/role`, {
+      const roleUrl = baseUrl.endsWith('/api') 
+        ? `${baseUrl}/admin/users/${userId}/role`
+        : `${baseUrl}/api/admin/users/${userId}/role`;
+      const response = await fetch(roleUrl, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
@@ -110,7 +116,10 @@ const UserManager: React.FC<UserManagerProps> = ({ isSuperAdmin }) => {
   const toggleUserStatus = async (userId: number, isActive: boolean) => {
     try {
       const baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8034';
-      const response = await fetch(`${baseUrl}/api/admin/users/${userId}/status`, {
+      const statusUrl = baseUrl.endsWith('/api') 
+        ? `${baseUrl}/admin/users/${userId}/status`
+        : `${baseUrl}/api/admin/users/${userId}/status`;
+      const response = await fetch(statusUrl, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
@@ -134,7 +143,10 @@ const UserManager: React.FC<UserManagerProps> = ({ isSuperAdmin }) => {
   const createUser = async () => {
     try {
       const baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8034';
-      const response = await fetch(`${baseUrl}/api/admin/users`, {
+      const usersUrl = baseUrl.endsWith('/api') 
+        ? `${baseUrl}/admin/users`
+        : `${baseUrl}/api/admin/users`;
+      const response = await fetch(usersUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -172,7 +184,10 @@ const UserManager: React.FC<UserManagerProps> = ({ isSuperAdmin }) => {
 
     try {
       const baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8034';
-      const response = await fetch(`${baseUrl}/api/admin/users/${userId}`, {
+      const deleteUserUrl = baseUrl.endsWith('/api') 
+        ? `${baseUrl}/admin/users/${userId}`
+        : `${baseUrl}/api/admin/users/${userId}`;
+      const response = await fetch(deleteUserUrl, {
         method: 'DELETE',
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('access_token')}`

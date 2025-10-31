@@ -13,6 +13,8 @@ import shutil
 import glob
 from datetime import datetime
 from utils.safe_logger import safe_logger
+import threading
+import time
 
 # Import our models and services
 from models.barcode_models import (
@@ -307,6 +309,38 @@ async def protected_openapi(request: Request, token: str = None):
     return app.openapi()
 
 # Startup event
+def background_collections_verification():
+    """Background job to sync Collections API and verify pending purchases every 2 seconds"""
+    safe_logger.info("Starting background Collections sync and verification (every 2 seconds)")
+    
+    while True:
+        try:
+            time.sleep(2)  # Wait 2 seconds
+            
+            from services.collections_service import OptimusCollectionsService
+            from services.token_verification_service import TokenVerificationService
+            
+            # Step 1: Sync collections data from API to database
+            collections_service = OptimusCollectionsService()
+            collections_result = collections_service.get_collections(limit=100, offset=0)
+            
+            if collections_result.get('success'):
+                safe_logger.debug("Collections synced to database")
+            else:
+                safe_logger.warning(f"Collections sync failed: {collections_result.get('error')}")
+            
+            # Step 2: Verify pending purchases (now uses database first)
+            verification_service = TokenVerificationService()
+            results = verification_service.verify_and_credit_pending_purchases()
+            
+            if results.get('credited', 0) > 0:
+                safe_logger.info(f"✅ Credited {results['credited']} pending purchases")
+            if results.get('still_pending', 0) > 0:
+                safe_logger.debug(f"Still pending: {results['still_pending']} purchases")
+                
+        except Exception as e:
+            safe_logger.error(f"Error in background Collections sync: {e}")
+
 @app.on_event("startup")
 async def startup_event():
     """Initialize the application"""
@@ -322,6 +356,12 @@ async def startup_event():
     cleanup_old_files("uploads", max_age_hours=24)
     cleanup_old_files("downloads/barcodes", max_age_hours=24)
     cleanup_old_files("downloads/pdfs", max_age_hours=24)
+    
+    # Start background Collections verification job
+    verification_thread = threading.Thread(target=background_collections_verification, daemon=True)
+    verification_thread.start()
+    safe_logger.info("Background Collections verification thread started")
+    
     safe_logger.info("API startup complete")
 
 # Simple health check endpoint (no auth required for Docker health checks)
@@ -1431,7 +1471,7 @@ async def get_default_template(
             detail=f"Error getting default template: {str(e)}"
         )
 
-@app.get("/archive/sessions", response_model=dict)
+@app.get("/api/archive/sessions", response_model=dict)
 async def get_archive_sessions(
     limit: int = 10,
     api_key: str = Depends(verify_api_key),
@@ -1447,7 +1487,7 @@ async def get_archive_sessions(
             detail=f"Failed to get archive sessions: {str(e)}"
         )
 
-@app.get("/archive/session/{session_id}/files", response_model=dict)
+@app.get("/api/archive/session/{session_id}/files", response_model=dict)
 async def get_session_files(
     session_id: str,
     api_key: str = Depends(verify_api_key),
@@ -1463,7 +1503,7 @@ async def get_session_files(
             detail=f"Failed to get session files: {str(e)}"
         )
 
-@app.get("/archive/statistics", response_model=dict)
+@app.get("/api/archive/statistics", response_model=dict)
 async def get_archive_statistics(
     api_key: str = Depends(verify_api_key),
     client_ip: str = Depends(check_rate_limit)
@@ -1478,7 +1518,7 @@ async def get_archive_statistics(
             detail=f"Failed to get archive statistics: {str(e)}"
         )
 
-@app.get("/database/files", response_model=dict)
+@app.get("/api/database/files", response_model=dict)
 async def get_all_files(
     api_key: str = Depends(verify_api_key),
     client_ip: str = Depends(check_rate_limit)
