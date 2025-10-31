@@ -15,6 +15,30 @@ echo "Repository root: $REPO_ROOT"
 echo "Deployment directory: $DEPLOY_DIR"
 echo ""
 
+# Check for existing running containers
+EXISTING_CONTAINERS=""
+if command -v docker >/dev/null 2>&1; then
+    EXISTING_CONTAINERS=$(docker ps --format "{{.Names}}" | grep -E "barcode|v2" || true)
+fi
+
+if [ -n "$EXISTING_CONTAINERS" ]; then
+    echo "⚠️  Found existing running containers:"
+    echo "$EXISTING_CONTAINERS" | sed 's/^/   - /'
+    echo ""
+    echo "This script will only set up files, NOT stop/restart your containers."
+    echo "After setup, you can manually switch to GHCR images when ready."
+    echo ""
+    read -p "Continue with file setup only? (Y/n) " -n 1 -r
+    echo
+    if [[ $REPLY =~ ^[Nn]$ ]]; then
+        echo "Setup cancelled."
+        exit 0
+    fi
+    SKIP_CONTAINER_OPS=true
+else
+    SKIP_CONTAINER_OPS=false
+fi
+
 # Check if running as root
 if [ "$EUID" -ne 0 ]; then 
     echo "⚠️  This script should be run with sudo for system-wide setup"
@@ -94,11 +118,28 @@ fi
 echo ""
 echo "✅ Setup complete!"
 echo ""
-echo "Next steps:"
-echo "1. Edit $DEPLOY_DIR/.env with your configuration"
-echo "2. Review $DEPLOY_DIR/docker-compose.prod.yml"
-echo "3. Setup webhook receiver (see GHCR_SETUP.md)"
-echo "4. Login to GHCR: echo \$GITHUB_TOKEN | docker login ghcr.io -u ericytex --password-stdin"
+if [ "$SKIP_CONTAINER_OPS" = true ]; then
+    echo "📦 Files set up successfully!"
+    echo ""
+    echo "Your existing containers are still running. To switch to GHCR images later:"
+    echo ""
+    echo "1. Edit $DEPLOY_DIR/.env with your configuration"
+    echo "2. Login to GHCR:"
+    echo "   echo \$GITHUB_TOKEN | docker login ghcr.io -u ericytex --password-stdin"
+    echo "3. When ready to switch:"
+    echo "   cd $DEPLOY_DIR"
+    echo "   docker compose -f docker-compose.prod.yml pull"
+    echo "   docker compose -f docker-compose.prod.yml up -d"
+    echo ""
+    echo "Or keep using your current setup - the files are ready for when you need them."
+else
+    echo "Next steps:"
+    echo "1. Edit $DEPLOY_DIR/.env with your configuration"
+    echo "2. Review $DEPLOY_DIR/docker-compose.prod.yml"
+    echo "3. Setup webhook receiver (see GHCR_SETUP.md)"
+    echo "4. Login to GHCR: echo \$GITHUB_TOKEN | docker login ghcr.io -u ericytex --password-stdin"
+    echo "5. Start containers: cd $DEPLOY_DIR && docker compose -f docker-compose.prod.yml up -d"
+fi
 echo ""
 echo "Deployment directory: $DEPLOY_DIR"
 
