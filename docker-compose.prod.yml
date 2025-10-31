@@ -1,5 +1,3 @@
-version: '3.8'
-
 # Production docker-compose file for remote server
 # Uses pre-built images from GHCR (no local builds)
 
