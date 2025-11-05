@@ -20,6 +20,7 @@ services:
       - UPLOAD_DIR=/app/uploads
       - DOWNLOAD_DIR=/app/downloads
       - LOGS_DIR=/app/logs
+      - DATABASE_PATH=/app/data/barcode_generator.db
     volumes:
       # Bind-mount local data directory to use existing DB
       - ./backend/data:/app/data

@@ -164,357 +164,357 @@ class DatabaseManager:
                 )
             """)
             
-        # Create device_brands table
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS device_brands (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                name TEXT NOT NULL UNIQUE,
-                icon TEXT DEFAULT '📱',
-                is_active BOOLEAN DEFAULT 1,
-                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-            )
-        """)
-        
-        # Create device_models table
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS device_models (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                brand_id INTEGER NOT NULL,
-                device_type TEXT DEFAULT 'phone',
-                model_name TEXT NOT NULL,
-                is_active BOOLEAN DEFAULT 1,
-                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (brand_id) REFERENCES device_brands (id),
-                UNIQUE(brand_id, device_type, model_name)
-            )
-        """)
+            # Create device_brands table
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS device_brands (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    name TEXT NOT NULL UNIQUE,
+                    icon TEXT DEFAULT '📱',
+                    is_active BOOLEAN DEFAULT 1,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
             
-        # Create indexes for better performance
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_filename ON barcode_files(filename)")
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_file_type ON barcode_files(file_type)")
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_generation_session ON barcode_files(generation_session)")
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_created_at ON barcode_files(created_at)")
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_session_id ON generation_sessions(session_id)")
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_device_brand ON devices(brand)")
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_device_type ON devices(device_type)")
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_device_active ON devices(is_active)")
-        
-        # Create indexes for device_brands table
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_device_brands_name ON device_brands(name)")
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_device_brands_is_active ON device_brands(is_active)")
-        
-        # Create indexes for device_models table
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_device_models_brand_id ON device_models(brand_id)")
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_device_models_device_type ON device_models(device_type)")
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_device_models_is_active ON device_models(is_active)")
-        
-        # Create banners table
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS banners (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                title TEXT NOT NULL,
-                message TEXT NOT NULL,
-                type TEXT NOT NULL DEFAULT 'info',
-                is_active BOOLEAN NOT NULL DEFAULT 1,
-                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                expires_at DATETIME,
-                created_by INTEGER,
-                FOREIGN KEY (created_by) REFERENCES users(id)
-            )
-        """)
-        
-        # Create indexes for banners table
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_banners_is_active ON banners(is_active)")
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_banners_created_at ON banners(created_at)")
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_banners_expires_at ON banners(expires_at)")
-        
-        # Create payment-related tables
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS subscription_plans (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                name TEXT NOT NULL,
-                description TEXT,
-                price_ugx INTEGER NOT NULL,
-                duration_months INTEGER DEFAULT 1,
-                features TEXT,
-                is_active BOOLEAN DEFAULT 1,
-                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-            )
-        """)
-        
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS user_subscriptions (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id INTEGER NOT NULL DEFAULT 1,
-                plan_id INTEGER NOT NULL,
-                status TEXT DEFAULT 'pending',
-                start_date DATETIME,
-                end_date DATETIME,
-                auto_renew BOOLEAN DEFAULT 1,
-                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (plan_id) REFERENCES subscription_plans(id)
-            )
-        """)
-        
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS payment_transactions (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id INTEGER NOT NULL DEFAULT 1,
-                subscription_id INTEGER,
-                transaction_uid TEXT UNIQUE NOT NULL,
-                optimus_transaction_id TEXT,
-                amount_ugx INTEGER NOT NULL,
-                currency TEXT DEFAULT 'UGX',
-                payment_method TEXT DEFAULT 'mobile_money',
-                status TEXT DEFAULT 'pending',
-                payment_url TEXT,
-                callback_data TEXT,
-                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (subscription_id) REFERENCES user_subscriptions(id)
-            )
-        """)
-        
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS payment_webhooks (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                transaction_uid TEXT NOT NULL,
-                webhook_data TEXT NOT NULL,
-                processed BOOLEAN DEFAULT 0,
-                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-            )
-        """)
-        
-        # Create indexes for payment tables
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_user_subscriptions_user_id ON user_subscriptions(user_id)")
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_user_subscriptions_status ON user_subscriptions(status)")
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_payment_transactions_user_id ON payment_transactions(user_id)")
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_payment_transactions_transaction_uid ON payment_transactions(transaction_uid)")
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_payment_webhooks_transaction_uid ON payment_webhooks(transaction_uid)")
-        
-        # Insert default subscription plan if not exists
-        cursor.execute("SELECT COUNT(*) FROM subscription_plans")
-        if cursor.fetchone()[0] == 0:
+            # Create device_models table
             cursor.execute("""
-                INSERT INTO subscription_plans (name, description, price_ugx, duration_months, features, is_active)
-                VALUES (?, ?, ?, ?, ?, ?)
-            """, (
-                'BarcodeGen Pro Monthly',
-                'Unlimited barcode generation, premium templates, priority support',
-                50000,
-                1,
-                '["unlimited_barcodes", "premium_templates", "priority_support", "bulk_export", "custom_branding", "api_access"]',
-                True
-            ))
-        
-        # Create authentication tables
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS users (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                email TEXT UNIQUE NOT NULL,
-                username TEXT UNIQUE NOT NULL,
-                password_hash TEXT NOT NULL,
-                full_name TEXT,
-                is_active BOOLEAN DEFAULT 1,
-                is_admin BOOLEAN DEFAULT 0,
-                is_super_admin BOOLEAN DEFAULT 0,
-                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                last_login DATETIME
-            )
-        """)
-        
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS user_sessions (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id INTEGER NOT NULL,
-                token TEXT UNIQUE NOT NULL,
-                refresh_token TEXT,
-                expires_at DATETIME NOT NULL,
-                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                ip_address TEXT,
-                user_agent TEXT,
-                FOREIGN KEY (user_id) REFERENCES users(id)
-            )
-        """)
-        
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS user_quotas (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id INTEGER UNIQUE NOT NULL,
-                monthly_barcode_limit INTEGER DEFAULT 1000,
-                barcodes_generated_this_month INTEGER DEFAULT 0,
-                month_start_date DATETIME,
-                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (user_id) REFERENCES users(id)
-            )
-        """)
-        
-        # Create indexes for auth tables
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_users_email ON users(email)")
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_users_username ON users(username)")
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_user_sessions_token ON user_sessions(token)")
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_user_sessions_user_id ON user_sessions(user_id)")
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_user_quotas_user_id ON user_quotas(user_id)")
-        
-        # Create token system tables
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS user_tokens (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id INTEGER NOT NULL UNIQUE,
-                balance INTEGER NOT NULL DEFAULT 0,
-                total_purchased INTEGER NOT NULL DEFAULT 0,
-                total_used INTEGER NOT NULL DEFAULT 0,
-                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (user_id) REFERENCES users(id)
-            )
-        """)
-        
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS token_purchases (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id INTEGER NOT NULL,
-                transaction_uid TEXT UNIQUE NOT NULL,
-                amount_ugx INTEGER NOT NULL,
-                tokens_purchased INTEGER NOT NULL,
-                payment_method TEXT DEFAULT 'mobile_money',
-                provider TEXT,
-                phone TEXT,
-                status TEXT DEFAULT 'pending',
-                payment_url TEXT,
-                local_country TEXT,
-                local_currency TEXT,
-                local_amount INTEGER,
-                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                completed_at DATETIME,
-                FOREIGN KEY (user_id) REFERENCES users(id)
-            )
-        """)
-        
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS token_usage (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id INTEGER NOT NULL,
-                tokens_used INTEGER NOT NULL,
-                operation TEXT NOT NULL,
-                details TEXT,
-                barcodes_generated INTEGER,
-                session_id TEXT,
-                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (user_id) REFERENCES users(id)
-            )
-        """)
-        
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS token_settings (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                setting_key TEXT UNIQUE NOT NULL,
-                setting_value TEXT NOT NULL,
-                description TEXT,
-                updated_by INTEGER,
-                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (updated_by) REFERENCES users(id)
-            )
-        """)
-        
-        # Create indexes for token tables
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_user_tokens_user_id ON user_tokens(user_id)")
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_token_purchases_user_id ON token_purchases(user_id)")
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_token_purchases_transaction_uid ON token_purchases(transaction_uid)")
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_token_purchases_status ON token_purchases(status)")
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_token_usage_user_id ON token_usage(user_id)")
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_token_usage_created_at ON token_usage(created_at)")
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_token_settings_key ON token_settings(setting_key)")
-
-        # Create collections table for Optimus Collections API data
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS collections (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                collection_id TEXT UNIQUE NOT NULL,
-                transaction_uid TEXT,
-                amount INTEGER,
-                currency TEXT,
-                status TEXT,
-                provider TEXT,
-                phone TEXT,
-                created_at TEXT,
-                completed_at TEXT,
-                description TEXT,
-                reference TEXT,
-                synced_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-            )
-        """)
-        
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_collections_transaction_uid ON collections(transaction_uid)")
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_collections_status ON collections(status)")
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_collections_synced_at ON collections(synced_at)")
-
-        # Create features table
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS features (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                title TEXT NOT NULL,
-                description TEXT NOT NULL,
-                upvotes INTEGER DEFAULT 0,
-                status TEXT DEFAULT 'Suggestion',
-                submitted_by INTEGER,
-                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (submitted_by) REFERENCES users(id)
-            )
-        """)
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_features_status ON features(status)")
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_features_upvotes ON features(upvotes)")
-
-        # Create bugs table
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS bugs (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                title TEXT NOT NULL,
-                description TEXT NOT NULL,
-                status TEXT DEFAULT 'Reported',
-                priority TEXT DEFAULT 'Medium',
-                submitted_by INTEGER,
-                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (submitted_by) REFERENCES users(id)
-            )
-        """)
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_bugs_status ON bugs(status)")
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_bugs_priority ON bugs(priority)")
-        
-        # Insert default token settings if not exists
-        default_settings = [
-            ('token_price_ugx', '500', 'Price per token in UGX'),
-            ('welcome_bonus_tokens', '0', 'Free tokens given to new users'),
-            ('min_purchase_tokens', '10', 'Minimum tokens that can be purchased'),
-            ('max_purchase_tokens', '1000', 'Maximum tokens that can be purchased'),
-            ('tokens_never_expire', 'true', 'Whether tokens expire or not'),
-            ('discount_tier_1_min', '50', 'Minimum tokens for tier 1 discount'),
-            ('discount_tier_1_percent', '10', 'Discount percentage for tier 1'),
-            ('discount_tier_2_min', '100', 'Minimum tokens for tier 2 discount'),
-            ('discount_tier_2_percent', '20', 'Discount percentage for tier 2'),
-            ('discount_tier_3_min', '500', 'Minimum tokens for tier 3 discount'),
-            ('discount_tier_3_percent', '30', 'Discount percentage for tier 3'),
-            ('payment_api_environment', 'sandbox', 'Payment API environment: sandbox or production'),
-            ('payment_production_auth_token', '', 'Production payment API auth token'),
-            ('payment_webhook_url', '', 'Payment webhook URL for callbacks'),
-            ('collections_api_url', 'https://optimus.santripe.com/transactions/mobile-money-collections/', 'Collections API base URL'),
-            ('collections_api_key', 'pki_7ve43chhGjdjjBag49ZNqJ6AZ3e29CGgq9494399pxfw7AdjsMqx9ZFma84993i', 'Optimus collections monitoring API key')
-        ]
-        
-        for key, value, description in default_settings:
+                CREATE TABLE IF NOT EXISTS device_models (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    brand_id INTEGER NOT NULL,
+                    device_type TEXT DEFAULT 'phone',
+                    model_name TEXT NOT NULL,
+                    is_active BOOLEAN DEFAULT 1,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (brand_id) REFERENCES device_brands (id),
+                    UNIQUE(brand_id, device_type, model_name)
+                )
+            """)
+                
+            # Create indexes for better performance
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_filename ON barcode_files(filename)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_file_type ON barcode_files(file_type)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_generation_session ON barcode_files(generation_session)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_created_at ON barcode_files(created_at)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_session_id ON generation_sessions(session_id)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_device_brand ON devices(brand)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_device_type ON devices(device_type)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_device_active ON devices(is_active)")
+            
+            # Create indexes for device_brands table
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_device_brands_name ON device_brands(name)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_device_brands_is_active ON device_brands(is_active)")
+            
+            # Create indexes for device_models table
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_device_models_brand_id ON device_models(brand_id)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_device_models_device_type ON device_models(device_type)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_device_models_is_active ON device_models(is_active)")
+            
+            # Create banners table
             cursor.execute("""
-                INSERT OR IGNORE INTO token_settings (setting_key, setting_value, description)
-                VALUES (?, ?, ?)
-            """, (key, value, description))
+                CREATE TABLE IF NOT EXISTS banners (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    title TEXT NOT NULL,
+                    message TEXT NOT NULL,
+                    type TEXT NOT NULL DEFAULT 'info',
+                    is_active BOOLEAN NOT NULL DEFAULT 1,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    expires_at DATETIME,
+                    created_by INTEGER,
+                    FOREIGN KEY (created_by) REFERENCES users(id)
+                )
+            """)
+            
+            # Create indexes for banners table
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_banners_is_active ON banners(is_active)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_banners_created_at ON banners(created_at)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_banners_expires_at ON banners(expires_at)")
+            
+            # Create payment-related tables
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS subscription_plans (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    name TEXT NOT NULL,
+                    description TEXT,
+                    price_ugx INTEGER NOT NULL,
+                    duration_months INTEGER DEFAULT 1,
+                    features TEXT,
+                    is_active BOOLEAN DEFAULT 1,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS user_subscriptions (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id INTEGER NOT NULL DEFAULT 1,
+                    plan_id INTEGER NOT NULL,
+                    status TEXT DEFAULT 'pending',
+                    start_date DATETIME,
+                    end_date DATETIME,
+                    auto_renew BOOLEAN DEFAULT 1,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (plan_id) REFERENCES subscription_plans(id)
+                )
+            """)
+            
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS payment_transactions (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id INTEGER NOT NULL DEFAULT 1,
+                    subscription_id INTEGER,
+                    transaction_uid TEXT UNIQUE NOT NULL,
+                    optimus_transaction_id TEXT,
+                    amount_ugx INTEGER NOT NULL,
+                    currency TEXT DEFAULT 'UGX',
+                    payment_method TEXT DEFAULT 'mobile_money',
+                    status TEXT DEFAULT 'pending',
+                    payment_url TEXT,
+                    callback_data TEXT,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (subscription_id) REFERENCES user_subscriptions(id)
+                )
+            """)
+            
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS payment_webhooks (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    transaction_uid TEXT NOT NULL,
+                    webhook_data TEXT NOT NULL,
+                    processed BOOLEAN DEFAULT 0,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            
+            # Create indexes for payment tables
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_user_subscriptions_user_id ON user_subscriptions(user_id)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_user_subscriptions_status ON user_subscriptions(status)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_payment_transactions_user_id ON payment_transactions(user_id)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_payment_transactions_transaction_uid ON payment_transactions(transaction_uid)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_payment_webhooks_transaction_uid ON payment_webhooks(transaction_uid)")
+            
+            # Insert default subscription plan if not exists
+            cursor.execute("SELECT COUNT(*) FROM subscription_plans")
+            if cursor.fetchone()[0] == 0:
+                cursor.execute("""
+                    INSERT INTO subscription_plans (name, description, price_ugx, duration_months, features, is_active)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                """, (
+                    'BarcodeGen Pro Monthly',
+                    'Unlimited barcode generation, premium templates, priority support',
+                    50000,
+                    1,
+                    '["unlimited_barcodes", "premium_templates", "priority_support", "bulk_export", "custom_branding", "api_access"]',
+                    True
+                ))
+            
+            # Create authentication tables
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS users (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    email TEXT UNIQUE NOT NULL,
+                    username TEXT UNIQUE NOT NULL,
+                    password_hash TEXT NOT NULL,
+                    full_name TEXT,
+                    is_active BOOLEAN DEFAULT 1,
+                    is_admin BOOLEAN DEFAULT 0,
+                    is_super_admin BOOLEAN DEFAULT 0,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    last_login DATETIME
+                )
+            """)
+            
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS user_sessions (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id INTEGER NOT NULL,
+                    token TEXT UNIQUE NOT NULL,
+                    refresh_token TEXT,
+                    expires_at DATETIME NOT NULL,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    ip_address TEXT,
+                    user_agent TEXT,
+                    FOREIGN KEY (user_id) REFERENCES users(id)
+                )
+            """)
+            
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS user_quotas (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id INTEGER UNIQUE NOT NULL,
+                    monthly_barcode_limit INTEGER DEFAULT 1000,
+                    barcodes_generated_this_month INTEGER DEFAULT 0,
+                    month_start_date DATETIME,
+                    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (user_id) REFERENCES users(id)
+                )
+            """)
+            
+            # Create indexes for auth tables
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_users_email ON users(email)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_users_username ON users(username)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_user_sessions_token ON user_sessions(token)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_user_sessions_user_id ON user_sessions(user_id)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_user_quotas_user_id ON user_quotas(user_id)")
+            
+            # Create token system tables
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS user_tokens (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id INTEGER NOT NULL UNIQUE,
+                    balance INTEGER NOT NULL DEFAULT 0,
+                    total_purchased INTEGER NOT NULL DEFAULT 0,
+                    total_used INTEGER NOT NULL DEFAULT 0,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (user_id) REFERENCES users(id)
+                )
+            """)
+            
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS token_purchases (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id INTEGER NOT NULL,
+                    transaction_uid TEXT UNIQUE NOT NULL,
+                    amount_ugx INTEGER NOT NULL,
+                    tokens_purchased INTEGER NOT NULL,
+                    payment_method TEXT DEFAULT 'mobile_money',
+                    provider TEXT,
+                    phone TEXT,
+                    status TEXT DEFAULT 'pending',
+                    payment_url TEXT,
+                    local_country TEXT,
+                    local_currency TEXT,
+                    local_amount INTEGER,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    completed_at DATETIME,
+                    FOREIGN KEY (user_id) REFERENCES users(id)
+                )
+            """)
+            
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS token_usage (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id INTEGER NOT NULL,
+                    tokens_used INTEGER NOT NULL,
+                    operation TEXT NOT NULL,
+                    details TEXT,
+                    barcodes_generated INTEGER,
+                    session_id TEXT,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (user_id) REFERENCES users(id)
+                )
+            """)
+            
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS token_settings (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    setting_key TEXT UNIQUE NOT NULL,
+                    setting_value TEXT NOT NULL,
+                    description TEXT,
+                    updated_by INTEGER,
+                    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (updated_by) REFERENCES users(id)
+                )
+            """)
+            
+            # Create indexes for token tables
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_user_tokens_user_id ON user_tokens(user_id)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_token_purchases_user_id ON token_purchases(user_id)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_token_purchases_transaction_uid ON token_purchases(transaction_uid)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_token_purchases_status ON token_purchases(status)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_token_usage_user_id ON token_usage(user_id)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_token_usage_created_at ON token_usage(created_at)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_token_settings_key ON token_settings(setting_key)")
 
-        conn.commit()
+            # Create collections table for Optimus Collections API data
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS collections (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    collection_id TEXT UNIQUE NOT NULL,
+                    transaction_uid TEXT,
+                    amount INTEGER,
+                    currency TEXT,
+                    status TEXT,
+                    provider TEXT,
+                    phone TEXT,
+                    created_at TEXT,
+                    completed_at TEXT,
+                    description TEXT,
+                    reference TEXT,
+                    synced_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_collections_transaction_uid ON collections(transaction_uid)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_collections_status ON collections(status)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_collections_synced_at ON collections(synced_at)")
+
+            # Create features table
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS features (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    title TEXT NOT NULL,
+                    description TEXT NOT NULL,
+                    upvotes INTEGER DEFAULT 0,
+                    status TEXT DEFAULT 'Suggestion',
+                    submitted_by INTEGER,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (submitted_by) REFERENCES users(id)
+                )
+            """)
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_features_status ON features(status)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_features_upvotes ON features(upvotes)")
+
+            # Create bugs table
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS bugs (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    title TEXT NOT NULL,
+                    description TEXT NOT NULL,
+                    status TEXT DEFAULT 'Reported',
+                    priority TEXT DEFAULT 'Medium',
+                    submitted_by INTEGER,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (submitted_by) REFERENCES users(id)
+                )
+            """)
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_bugs_status ON bugs(status)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_bugs_priority ON bugs(priority)")
+            
+            # Insert default token settings if not exists
+            default_settings = [
+                ('token_price_ugx', '500', 'Price per token in UGX'),
+                ('welcome_bonus_tokens', '0', 'Free tokens given to new users'),
+                ('min_purchase_tokens', '10', 'Minimum tokens that can be purchased'),
+                ('max_purchase_tokens', '1000', 'Maximum tokens that can be purchased'),
+                ('tokens_never_expire', 'true', 'Whether tokens expire or not'),
+                ('discount_tier_1_min', '50', 'Minimum tokens for tier 1 discount'),
+                ('discount_tier_1_percent', '10', 'Discount percentage for tier 1'),
+                ('discount_tier_2_min', '100', 'Minimum tokens for tier 2 discount'),
+                ('discount_tier_2_percent', '20', 'Discount percentage for tier 2'),
+                ('discount_tier_3_min', '500', 'Minimum tokens for tier 3 discount'),
+                ('discount_tier_3_percent', '30', 'Discount percentage for tier 3'),
+                ('payment_api_environment', 'sandbox', 'Payment API environment: sandbox or production'),
+                ('payment_production_auth_token', '', 'Production payment API auth token'),
+                ('payment_webhook_url', '', 'Payment webhook URL for callbacks'),
+                ('collections_api_url', 'https://optimus.santripe.com/transactions/mobile-money-collections/', 'Collections API base URL'),
+                ('collections_api_key', 'pki_7ve43chhGjdjjBag49ZNqJ6AZ3e29CGgq9494399pxfw7AdjsMqx9ZFma84993i', 'Optimus collections monitoring API key')
+            ]
+            
+            for key, value, description in default_settings:
+                cursor.execute("""
+                    INSERT OR IGNORE INTO token_settings (setting_key, setting_value, description)
+                    VALUES (?, ?, ?)
+                """, (key, value, description))
+
+            conn.commit()
     
     def insert_barcode_record(self, record: BarcodeRecord) -> int:
         """Insert a new barcode record and return the ID"""

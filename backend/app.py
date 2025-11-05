@@ -1212,6 +1212,20 @@ async def upload_excel_and_generate_samsung_galaxy_pdf(
                     grid_rows=12
                 )
                 
+                # Clean up PNG files immediately after PDF creation to prevent duplication
+                try:
+                    png_files = glob.glob(os.path.join(downloads_barcodes_dir, "*.png"))
+                    for png_file in png_files:
+                        try:
+                            os.remove(png_file)
+                            safe_logger.info(f"🧹 Cleaned up PNG file: {os.path.basename(png_file)}")
+                        except Exception as e:
+                            safe_logger.warning(f"⚠️  Could not remove PNG file {os.path.basename(png_file)}: {e}")
+                    if png_files:
+                        safe_logger.info(f"✅ Cleaned up {len(png_files)} PNG files after PDF creation")
+                except Exception as e:
+                    safe_logger.warning(f"⚠️  Error during PNG cleanup: {e}")
+                
                 pdf_url = f"/barcodes/download-pdf/{os.path.basename(pdf_path)}" if pdf_path else "/barcodes/download-pdf/default.pdf"
                 
                 return {

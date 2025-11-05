@@ -9,6 +9,7 @@ services:
     environment:
       - PYTHONUNBUFFERED=1
       - API_PORT=8034
+      - DATABASE_PATH=/app/data/barcode_generator.db
     volumes:
       # Persist generated files
       - ./downloads:/app/downloads

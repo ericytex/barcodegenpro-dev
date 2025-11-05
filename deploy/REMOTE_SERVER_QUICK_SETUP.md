@@ -20,7 +20,6 @@ cd barcodegen-v2  # or your repo name
 # Run the setup script
 sudo ./deploy/setup-remote-server.sh
 ```
-
 ## Option 2: Manual Setup (If repo isn't up to date)
 
 ### Step 1: Create deployment directory

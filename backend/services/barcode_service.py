@@ -990,6 +990,20 @@ class BarcodeService:
         print(f"📄 Total pages: {total_pages}")
         print(f"📐 Grid layout: {grid_cols} columns × {grid_rows} rows")
         
+        # Clean up PNG files immediately after PDF creation to prevent duplication
+        try:
+            png_files = glob.glob(os.path.join(self.output_dir, "*.png"))
+            for png_file in png_files:
+                try:
+                    os.remove(png_file)
+                    print(f"🧹 Cleaned up PNG file: {os.path.basename(png_file)}")
+                except Exception as e:
+                    print(f"⚠️  Warning: Could not remove PNG file {os.path.basename(png_file)}: {e}")
+            if png_files:
+                print(f"✅ Cleaned up {len(png_files)} PNG files after PDF creation")
+        except Exception as e:
+            print(f"⚠️  Warning: Error during PNG cleanup: {e}")
+        
         return pdf_filename
 
     # Enhanced Device-Specific Barcode Generation
