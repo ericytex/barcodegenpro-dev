@@ -452,9 +452,16 @@ class ApiService {
     const baseUrl = this.baseUrl.endsWith('/') ? this.baseUrl.slice(0, -1) : this.baseUrl;
     let cleanEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
     
-    // If baseUrl already ends with /api and endpoint starts with /api, remove /api from endpoint
-    if (baseUrl.endsWith('/api') && cleanEndpoint.startsWith('/api/')) {
-      cleanEndpoint = cleanEndpoint.replace(/^\/api/, '');
+    // If baseUrl already ends with /api and endpoint starts with /api/, remove /api from endpoint
+    if (baseUrl.endsWith('/api')) {
+      // Remove leading /api from endpoint if present
+      cleanEndpoint = cleanEndpoint.replace(/^\/api\//, '/').replace(/^\/api$/, '');
+    } else if (baseUrl.startsWith('/') && !cleanEndpoint.startsWith('/api')) {
+      // If baseUrl is relative path and endpoint doesn't have /api, add it
+      cleanEndpoint = `/api${cleanEndpoint}`;
+    } else if (!baseUrl.startsWith('/') && !baseUrl.startsWith('http') && !cleanEndpoint.startsWith('/api')) {
+      // If baseUrl is not relative/absolute and endpoint doesn't have /api, add it
+      cleanEndpoint = `/api${cleanEndpoint}`;
     }
     
     const url = `${baseUrl}${cleanEndpoint}`;
@@ -602,16 +609,7 @@ class ApiService {
     // Get JWT token from localStorage if available
     const jwtToken = localStorage.getItem('access_token');
     
-    // Use buildApiUrl to construct the correct URL
-    const url = buildApiUrl('/barcodes/upload-excel');
-    
-    debugLog('Upload Excel URL', {
-      baseUrl: this.baseUrl,
-      endpoint: '/barcodes/upload-excel',
-      finalUrl: url
-    });
-    
-    const response = await fetch(url, {
+    const response = await this.request<BarcodeGenerationResponse>('/api/barcodes/upload-excel', {
       method: 'POST',
       headers: {
         'X-API-Key': this.apiKey,
@@ -620,17 +618,11 @@ class ApiService {
       },
       body: formData,
     });
-    
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      throw new Error(
-        errorData.detail || errorData.message || `HTTP error! status: ${response.status}`
-      );
-    }
-    
-    const result = await response.json();
-    debugLog('Upload response', result);
-    return result as BarcodeGenerationResponse;
+
+    debugLog('Upload response', response);
+    debugLog('Response type', typeof response);
+    debugLog('Response keys', response ? Object.keys(response) : 'undefined');
+    return response;
   }
 
   /**
