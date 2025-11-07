@@ -2546,8 +2546,6 @@ export default function BarcodeDesignerV2() {
                 e.stopPropagation();
                 handleDoubleClick(component.id);
               }}
-              enableResizing={selectedComponent === component.id}
-              disableDragging={false}
             >
               <div 
                 className={`w-full h-full flex items-center justify-center bg-transparent hover:bg-gray-50 relative group ${
