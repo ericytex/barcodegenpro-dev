@@ -1,5 +1,5 @@
 # Multi-stage build for Barcode Generator Frontend
-FROM node:18-alpine as builder
+FROM node:18-alpine AS builder
 
 # Set working directory
 WORKDIR /app
