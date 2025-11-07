@@ -12,6 +12,8 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useBarcodeApi } from "@/hooks/useBarcodeApi";
 import { ScalableDeviceSelector, useScalableDeviceSelector } from "@/components/ScalableDeviceSelector";
 import { SimpleDeviceSelector, useSimpleDeviceSelector } from "@/components/SimpleDeviceSelector";
+import { DeviceSelector, useDeviceSelector } from "@/components/DeviceSelector";
+import { ExcelColumnPreview } from "@/components/ExcelColumnPreview";
 import { InsufficientTokensModal } from "@/components/InsufficientTokensModal";
 import { TokenPurchaseModal } from "@/components/TokenPurchaseModal";
 import { useTokens } from "@/contexts/TokenContext";
@@ -41,8 +43,8 @@ export function ApiFileUpload({ onFileUploaded, onDirectGeneration }: ApiFileUpl
     costUgx: 0,
   });
 
-  // Simple device selector state
-  const { selectedDevice, handleDeviceChange } = useSimpleDeviceSelector();
+  // Device selector state - using DeviceSelector for Itel support
+  const { selectedDevice, handleDeviceChange } = useDeviceSelector();
   
   // Token state
   const { balance, refreshBalance } = useTokens();
@@ -162,13 +164,43 @@ export function ApiFileUpload({ onFileUploaded, onDirectGeneration }: ApiFileUpl
         setUploadProgress(prev => Math.min(prev + 15, 90));
       }, 200);
 
+      // Extract template_id from selectedDevice.specifications if available
+      console.log('🔍 APIFILEUPLOAD DEBUG: handleDirectGeneration called');
+      console.log('🔍 APIFILEUPLOAD DEBUG: selectedDevice:', selectedDevice);
+      console.log('🔍 APIFILEUPLOAD DEBUG: selectedDevice?.specifications:', selectedDevice?.specifications);
+      
+      let templateId: string | undefined = undefined;
+      if (selectedDevice?.specifications) {
+        try {
+          const specs = typeof selectedDevice.specifications === 'string' 
+            ? JSON.parse(selectedDevice.specifications) 
+            : selectedDevice.specifications;
+          console.log('🔍 APIFILEUPLOAD DEBUG: Parsed specs:', specs);
+          if (specs?.template_id) {
+            templateId = specs.template_id;
+            console.log('✅ APIFILEUPLOAD DEBUG: Extracted template_id from device specifications:', templateId);
+          } else {
+            console.warn('⚠️ APIFILEUPLOAD DEBUG: specs.template_id not found. Specs:', specs);
+          }
+        } catch (e) {
+          console.error('❌ APIFILEUPLOAD DEBUG: Failed to parse device specifications:', e);
+        }
+      } else {
+        console.warn('⚠️ APIFILEUPLOAD DEBUG: selectedDevice?.specifications is falsy:', selectedDevice?.specifications);
+      }
+      
+      console.log('🔍 APIFILEUPLOAD DEBUG: Final templateId before API call:', templateId);
+
       const response = await uploadExcelAndGenerate(file, {
         createPdf: true,
         pdfGridCols,
         pdfGridRows,
         deviceType: selectedDevice?.device_type,
         deviceId: selectedDevice?.id,
+        templateId: templateId, // Include template ID from DeviceSelector
       });
+      
+      console.log('🔍 APIFILEUPLOAD DEBUG: After API call, templateId sent was:', templateId);
 
       clearInterval(progressInterval);
       setUploadProgress(100);
@@ -193,7 +225,7 @@ export function ApiFileUpload({ onFileUploaded, onDirectGeneration }: ApiFileUpl
       setUploading(false);
       setUploadProgress(0);
     }
-  }, [uploadExcelAndGenerate, pdfGridCols, pdfGridRows, onDirectGeneration]);
+  }, [uploadExcelAndGenerate, pdfGridCols, pdfGridRows, onDirectGeneration, selectedDevice]);
 
   // Handle toggle with token check
   const handleToggleChange = (checked: boolean) => {
@@ -315,58 +347,37 @@ export function ApiFileUpload({ onFileUploaded, onDirectGeneration }: ApiFileUpl
           )}
         </div>
 
-        {/* PDF Settings and Device Selection - Responsive Layout */}
+        {/* Device Selection */}
         {useDirectGeneration && (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
-            {/* PDF Grid Settings */}
-            <div className="space-y-2">
-              <Label className="text-xs font-medium">PDF Grid Settings</Label>
-              <div className="flex gap-2">
-                <div className="flex-1">
-                  <Label htmlFor="pdf-cols" className="text-xs">Columns</Label>
-                  <Input
-                    id="pdf-cols"
-                    type="number"
-                    min="1"
-                    max="10"
-                    value={pdfGridCols}
-                    onChange={(e) => setPdfGridCols(parseInt(e.target.value) || 5)}
-                    className="h-8 text-sm"
-                    disabled={true}
-                  />
-                </div>
-                <div className="flex-1">
-                  <Label htmlFor="pdf-rows" className="text-xs">Rows</Label>
-                  <Input
-                    id="pdf-rows"
-                    type="number"
-                    min="1"
-                    max="20"
-                    value={pdfGridRows}
-                    onChange={(e) => setPdfGridRows(parseInt(e.target.value) || 12)}
-                    className="h-8 text-sm"
-                    disabled={true}
-                  />
-                </div>
-              </div>
+          <div className="space-y-2">
+            <div className="flex items-center gap-2">
+              <Smartphone className="w-3 h-3 text-primary" />
+              <Label className="text-xs font-medium">Device Selection (Optional)</Label>
             </div>
-
-            {/* Device Selection */}
-            <div className="space-y-2">
-              <div className="flex items-center gap-2">
-                <Smartphone className="w-3 h-3 text-primary" />
-                <Label className="text-xs font-medium">Device Selection (Simple)</Label>
+            <DeviceSelector
+              value={selectedDevice}
+              onChange={handleDeviceChange}
+              placeholder="Select device type (e.g., Itel Vision 7 Plus) for specialized barcode generation..."
+            />
+            {selectedDevice && (
+              <div className="text-xs text-muted-foreground p-2 bg-muted/30 rounded">
+                <strong>Selected:</strong> {selectedDevice.brand} {selectedDevice.name}
+                <br />
+                <strong>Type:</strong> {selectedDevice.device_type}
+                <br />
+                <strong>Model:</strong> {selectedDevice.model_code}
               </div>
-              <SimpleDeviceSelector
-                value={selectedDevice}
-                onChange={handleDeviceChange}
-                placeholder="Select device for specialized barcode generation..."
-                disabled={true}
-              />
-              <p className="text-xs text-muted-foreground">
-                Device selection is temporarily disabled. Coming in the next version.
-              </p>
-            </div>
+            )}
+            <p className="text-xs text-muted-foreground">
+              Select a device type (e.g., Itel phones) to generate specialized barcodes with custom templates.
+            </p>
+            
+            {/* Excel Column Preview - Show immediately when device is selected */}
+            {selectedDevice && (
+              <div className="mt-4">
+                <ExcelColumnPreview device={selectedDevice} />
+              </div>
+            )}
           </div>
         )}
 

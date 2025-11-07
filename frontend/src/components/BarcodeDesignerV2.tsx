@@ -88,6 +88,9 @@ export default function BarcodeDesignerV2() {
   const [qrImages, setQrImages] = useState<Record<string, string>>({});
   const [showImportDialog, setShowImportDialog] = useState(false);
   const [importJson, setImportJson] = useState('');
+  const [savedTemplates, setSavedTemplates] = useState<any[]>([]);
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string>('');
+  const [loadingTemplates, setLoadingTemplates] = useState(false);
   const [zoom, setZoom] = useState(1);
   const [snapToGrid, setSnapToGrid] = useState(true);
   const [preciseMode, setPreciseMode] = useState(false);
@@ -135,6 +138,21 @@ export default function BarcodeDesignerV2() {
   const [componentMappingCollapsed, setComponentMappingCollapsed] = useState<Record<string, boolean>>({});
   const [currentPreviewRowIndex, setCurrentPreviewRowIndex] = useState(0);
   const [extractionRuleMode, setExtractionRuleMode] = useState<'simple' | 'advanced'>('simple');
+  
+  // Sync componentForMapping with latest component data when components change
+  // This ensures that when a template is loaded, componentForMapping has the latest mapping data
+  useEffect(() => {
+    if (componentForMapping && components.length > 0) {
+      const latestComponent = components.find(c => c.id === componentForMapping.id);
+      if (latestComponent) {
+        // Only update if the mapping data is different (to avoid infinite loops)
+        const mappingChanged = JSON.stringify(latestComponent.mapping) !== JSON.stringify(componentForMapping.mapping);
+        if (mappingChanged) {
+          setComponentForMapping(latestComponent);
+        }
+      }
+    }
+  }, [components, componentForMapping?.id]);
 
   // Alignment guides state
   const [alignmentGuides, setAlignmentGuides] = useState<{
@@ -545,26 +563,52 @@ export default function BarcodeDesignerV2() {
 
   // Update component position/size
   const updateComponent = (id: string, updates: Partial<DesignerComponent>) => {
+    // Find the component to check its type for debugging
+    const component = components.find(c => c.id === id);
+    
     // Apply snap-to-grid to position and size updates
+    // Note: Only snap if snapToGrid is enabled and not in precise mode
     const snappedUpdates = { ...updates };
-    if (updates.x !== undefined) snappedUpdates.x = snapToGridPosition(updates.x);
-    if (updates.y !== undefined) snappedUpdates.y = snapToGridPosition(updates.y);
-    if (updates.width !== undefined) snappedUpdates.width = snapToGridPosition(updates.width);
-    if (updates.height !== undefined) snappedUpdates.height = snapToGridPosition(updates.height);
+    if (updates.x !== undefined) {
+      const originalX = updates.x;
+      snappedUpdates.x = snapToGrid ? snapToGridPosition(updates.x, preciseMode) : updates.x;
+      if (component?.type === 'qr') {
+        console.log(`🔍 QR updateComponent X: original=${originalX}, snapped=${snappedUpdates.x}, snapToGrid=${snapToGrid}, preciseMode=${preciseMode}`);
+      }
+    }
+    if (updates.y !== undefined) {
+      const originalY = updates.y;
+      snappedUpdates.y = snapToGrid ? snapToGridPosition(updates.y, preciseMode) : updates.y;
+      if (component?.type === 'qr') {
+        console.log(`🔍 QR updateComponent Y: original=${originalY}, snapped=${snappedUpdates.y}, snapToGrid=${snapToGrid}, preciseMode=${preciseMode}`);
+      }
+    }
+    if (updates.width !== undefined) {
+      snappedUpdates.width = snapToGrid ? snapToGridPosition(updates.width, preciseMode) : updates.width;
+    }
+    if (updates.height !== undefined) {
+      snappedUpdates.height = snapToGrid ? snapToGridPosition(updates.height, preciseMode) : updates.height;
+    }
 
     const newComponents = components.map((c) => 
       c.id === id ? { ...c, ...snappedUpdates } : c
     );
+    
+    if (component?.type === 'qr') {
+      const updated = newComponents.find(c => c.id === id);
+      console.log(`🔍 QR updateComponent RESULT: new x=${updated?.x}, new y=${updated?.y}`);
+    }
+    
     setComponents(newComponents);
     saveToHistory(newComponents);
 
     // Regenerate images for barcode and QR components when size changes
-    const component = newComponents.find(c => c.id === id);
-    if (component && (updates.width || updates.height)) {
-      if (component.type === "barcode") {
-        generateBarcodeImage(component);
-      } else if (component.type === "qr") {
-        generateQRImage(component);
+    const updatedComponent = newComponents.find(c => c.id === id);
+    if (updatedComponent && (updates.width || updates.height)) {
+      if (updatedComponent.type === "barcode") {
+        generateBarcodeImage(updatedComponent);
+      } else if (updatedComponent.type === "qr") {
+        generateQRImage(updatedComponent);
       }
     }
   };
@@ -677,20 +721,109 @@ export default function BarcodeDesignerV2() {
     URL.revokeObjectURL(url);
   };
 
+  // Load saved templates for import dialog
+  const loadSavedTemplates = async () => {
+    setLoadingTemplates(true);
+    try {
+      const apiConfig = getApiConfig();
+      const response = await fetch(`${apiConfig.baseUrl}/api/templates`, {
+        headers: {
+          'X-API-Key': apiConfig.apiKey,
+        },
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        const templates = data.templates || [];
+        console.log('Loaded templates:', templates);
+        setSavedTemplates(templates);
+      } else {
+        const errorText = await response.text();
+        console.error('Failed to load templates:', response.status, errorText);
+        setSavedTemplates([]);
+      }
+    } catch (error) {
+      console.error('Error loading templates:', error);
+      setSavedTemplates([]);
+    } finally {
+      setLoadingTemplates(false);
+    }
+  };
+
+  // Load templates when import dialog opens
+  useEffect(() => {
+    if (showImportDialog) {
+      loadSavedTemplates();
+    }
+  }, [showImportDialog]);
+
+  // Load template JSON when a template is selected
+  const handleTemplateSelect = async (templateId: string) => {
+    if (!templateId || templateId === 'none') {
+      setSelectedTemplateId('');
+      setImportJson('');
+      return;
+    }
+
+    setSelectedTemplateId(templateId);
+    try {
+      const apiConfig = getApiConfig();
+      console.log('Loading template:', templateId);
+      const response = await fetch(`${apiConfig.baseUrl}/api/templates/${templateId}`, {
+        headers: {
+          'X-API-Key': apiConfig.apiKey,
+        },
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        console.log('Template response:', data);
+        
+        // Extract template object from API response wrapper
+        // API returns: { "success": true, "template": {...} }
+        // Import function expects: { "id": "...", "name": "...", "components": [...] }
+        const template = data.template || data;
+        
+        // Convert template to JSON string for textarea
+        const templateJson = JSON.stringify(template, null, 2);
+        setImportJson(templateJson);
+        const templateName = template.name || template.id || 'Unknown';
+        toast.success(`Loaded template: ${templateName}`);
+      } else {
+        const errorText = await response.text();
+        console.error('Failed to load template:', response.status, errorText);
+        toast.error(`Failed to load template: ${response.statusText}`);
+      }
+    } catch (error) {
+      console.error('Error loading template:', error);
+      toast.error(`Error loading template: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  };
+
   // Import JSON
   const importJSON = () => {
     try {
       const importedData = JSON.parse(importJson);
       let importedComponents: any[];
       
-      // Handle both formats:
-      // 1. Direct array of components (old format)
-      // 2. Full template object with components array (backend format)
-      if (Array.isArray(importedData)) {
-        importedComponents = importedData;
-      } else if (importedData.components && Array.isArray(importedData.components)) {
-        // Backend template format - convert to frontend format
-        importedComponents = importedData.components.map((comp: any, index: number) => ({
+      // Handle multiple formats:
+      // 1. Direct array of components (old format): [{...}, {...}]
+      // 2. Template object with components: { "id": "...", "components": [...] }
+      // 3. API response wrapper: { "success": true, "template": { "components": [...] } }
+      let templateData = importedData;
+      
+      // If it's an API response wrapper, extract the template
+      if (importedData.template && importedData.template.components) {
+        templateData = importedData.template;
+        console.log('Detected API response wrapper, extracting template object');
+      }
+      
+      if (Array.isArray(templateData)) {
+        // Format 1: Direct array of components
+        importedComponents = templateData;
+      } else if (templateData.components && Array.isArray(templateData.components)) {
+        // Format 2: Template object with components array
+        importedComponents = templateData.components.map((comp: any, index: number) => ({
           id: comp.id || `imported-${Date.now()}-${index}`,
           type: comp.type || 'text',
           x: comp.x || 0,
@@ -700,7 +833,7 @@ export default function BarcodeDesignerV2() {
           props: comp.properties || comp.props || {} // Handle both 'properties' and 'props'
         }));
         
-        console.log(`Importing template: ${importedData.name || 'Unknown'} with ${importedComponents.length} components`);
+        console.log(`Importing template: ${templateData.name || 'Unknown'} with ${importedComponents.length} components`);
       } else {
         throw new Error('Invalid JSON format. Expected an array of components or a template object with a components array.');
       }
@@ -718,6 +851,7 @@ export default function BarcodeDesignerV2() {
       // Close dialog and clear input
       setShowImportDialog(false);
       setImportJson('');
+      setSelectedTemplateId('');
       
       console.log('Successfully imported', importedComponents.length, 'components');
       toast.success(`Successfully imported ${importedComponents.length} components from template`);
@@ -819,7 +953,7 @@ export default function BarcodeDesignerV2() {
   const loadTemplates = async () => {
     try {
       const apiConfig = getApiConfig();
-      const response = await fetch(`${apiConfig.baseUrl}/templates`, {
+      const response = await fetch(`${apiConfig.baseUrl}/api/templates`, {
         headers: {
           'X-API-Key': 'test-key',
         },
@@ -935,10 +1069,10 @@ export default function BarcodeDesignerV2() {
         components: components.map(component => ({
           id: component.id,
           type: component.type,
-          x: component.x,
-          y: component.y,
-          width: component.width,
-          height: component.height,
+          x: Math.round(component.x),
+          y: Math.round(component.y),
+          width: component.width ? Math.round(component.width) : null,
+          height: component.height ? Math.round(component.height) : null,
           properties: component.props,
           mapping: component.mapping || null  // Include mapping data!
         })),
@@ -950,7 +1084,7 @@ export default function BarcodeDesignerV2() {
       };
 
       const apiConfig = getApiConfig();
-      const response = await fetch(`${apiConfig.baseUrl}/templates`, {
+      const response = await fetch(`${apiConfig.baseUrl}/api/templates`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -984,7 +1118,7 @@ export default function BarcodeDesignerV2() {
   const loadTemplatesForEdit = async () => {
     try {
       const apiConfig = getApiConfig();
-      const response = await fetch(`${apiConfig.baseUrl}/templates`, {
+      const response = await fetch(`${apiConfig.baseUrl}/api/templates`, {
         headers: {
           'X-API-Key': 'test-key',
         },
@@ -1006,7 +1140,7 @@ export default function BarcodeDesignerV2() {
   const loadTemplateForEdit = async (templateId: string) => {
     try {
       const apiConfig = getApiConfig();
-      const response = await fetch(`${apiConfig.baseUrl}/templates/${templateId}`, {
+      const response = await fetch(`${apiConfig.baseUrl}/api/templates/${templateId}`, {
         headers: {
           'X-API-Key': 'test-key',
         },
@@ -1026,18 +1160,43 @@ export default function BarcodeDesignerV2() {
         console.log('✅ Template components:', template.components);
         
         // Convert template components to DesignerComponent format
-        const designerComponents: DesignerComponent[] = template.components.map((comp: any) => ({
-          id: comp.id,
-          type: comp.type,
-          x: comp.x,
-          y: comp.y,
-          width: comp.width,
-          height: comp.height,
-          props: comp.properties,
-          mapping: comp.mapping || null
-        }));
+        const designerComponents: DesignerComponent[] = template.components.map((comp: any) => {
+          // Normalize mapping structure to ensure it's properly formatted
+          let mapping = comp.mapping || null;
+          if (mapping && typeof mapping === 'object') {
+            // Ensure isConnected is set correctly based on mapping data
+            // This fixes cases where mapping exists but isConnected is missing or false
+            const hasColumn = !!(mapping.columnName && mapping.columnName.trim());
+            const hasStaticValue = !!(mapping.staticValue && mapping.staticValue.trim());
+            mapping = {
+              columnName: mapping.columnName || undefined,
+              extractionRule: mapping.extractionRule || undefined,
+              staticValue: mapping.staticValue || undefined,
+              isConnected: mapping.isConnected !== undefined 
+                ? mapping.isConnected 
+                : (hasColumn || hasStaticValue)
+            };
+            console.log(`🔍 Component ${comp.id} mapping normalized:`, mapping);
+          }
+          
+          return {
+            id: comp.id,
+            type: comp.type,
+            x: comp.x,
+            y: comp.y,
+            width: comp.width,
+            height: comp.height,
+            props: comp.properties,
+            mapping: mapping
+          };
+        });
         
         console.log('✅ Converted designer components:', designerComponents);
+        console.log('🔍 Components with mappings:', designerComponents.filter(c => c.mapping).map(c => ({
+          id: c.id,
+          type: c.type,
+          mapping: c.mapping
+        })));
         
         // Check if we have any components
         if (designerComponents.length === 0) {
@@ -1081,10 +1240,10 @@ export default function BarcodeDesignerV2() {
         components: components.map(component => ({
           id: component.id,
           type: component.type,
-          x: component.x,
-          y: component.y,
-          width: component.width,
-          height: component.height,
+          x: Math.round(component.x),
+          y: Math.round(component.y),
+          width: component.width ? Math.round(component.width) : null,
+          height: component.height ? Math.round(component.height) : null,
           properties: component.props,
           mapping: component.mapping || null
         })),
@@ -1096,7 +1255,7 @@ export default function BarcodeDesignerV2() {
       };
 
       const apiConfig = getApiConfig();
-      const response = await fetch(`${apiConfig.baseUrl}/templates/${editingTemplateId}`, {
+      const response = await fetch(`${apiConfig.baseUrl}/api/templates/${editingTemplateId}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -1445,15 +1604,31 @@ export default function BarcodeDesignerV2() {
 
   // Extract text based on extraction rule
   const extractTextFromValue = (value: string, rule: any) => {
-    if (!value || !rule) return value;
+    if (!value || !rule) {
+      console.warn('[extractTextFromValue] Missing value or rule', { value, rule });
+      return value || '';
+    }
+    
+    // Debug logging for position_based rules
+    if (rule.type === 'position_based' && rule.position_type === 'word_position') {
+      console.log('[extractTextFromValue] Applying word_position rule:', {
+        value,
+        rule,
+        wordPosition: rule.wordPosition ?? rule.word_position
+      });
+    }
     
     switch (rule.type) {
       case 'direct':
         return value;
       case 'first_word':
-        return value.split(' ')[0] || value;
+        // Use improved word splitting (handles multiple spaces)
+        const firstWords = value.trim().split(/\s+/).filter(w => w.length > 0);
+        return firstWords.length > 0 ? firstWords[0] : value;
       case 'last_word':
-        return value.split(' ').pop() || value;
+        // Use improved word splitting (handles multiple spaces)
+        const lastWords = value.trim().split(/\s+/).filter(w => w.length > 0);
+        return lastWords.length > 0 ? lastWords[lastWords.length - 1] : value;
       case 'regex':
         if (rule.value) {
           try {
@@ -1470,8 +1645,11 @@ export default function BarcodeDesignerV2() {
       case 'context_based':
         return extractByContext(value, rule.context_type);
       case 'position_based':
-        return extractByPosition(value, rule);
+        const extracted = extractByPosition(value, rule);
+        console.log('[extractTextFromValue] position_based extraction result:', { input: value, output: extracted, rule });
+        return extracted;
       default:
+        console.warn('[extractTextFromValue] Unknown rule type:', rule.type);
         return value;
     }
   };
@@ -1499,6 +1677,169 @@ export default function BarcodeDesignerV2() {
       default:
         return value;
     }
+  };
+
+  // Analyze selected text position and create appropriate position-based rule
+  const analyzeTextPosition = (fullText: string, selectedText: string, selectionStart: number, selectionEnd: number) => {
+    const words = fullText.trim().split(/\s+/);
+    const selectedTextTrimmed = selectedText.trim();
+    
+    // Build accurate word position map by reconstructing the text with spaces
+    const wordPositions: Array<{start: number, end: number, index: number, word: string}> = [];
+    let charIndex = 0;
+    
+    for (let i = 0; i < words.length; i++) {
+      const wordStart = charIndex;
+      const wordEnd = charIndex + words[i].length;
+      wordPositions.push({ start: wordStart, end: wordEnd, index: i, word: words[i] });
+      // Move to next word position (word + space)
+      charIndex = wordEnd + 1; // +1 for the space after the word
+    }
+    
+    // Find which word(s) contain the selection
+    let selectedWordStart = -1;
+    let selectedWordEnd = -1;
+    
+    // Method 1: Use character positions to find word indices
+    for (const wp of wordPositions) {
+      // Check if selection start is within this word's boundaries
+      if (selectionStart >= wp.start && selectionStart <= wp.end) {
+        selectedWordStart = wp.index;
+      }
+      // Check if selection end is within this word's boundaries
+      if (selectionEnd > wp.start && selectionEnd <= wp.end + 1) { // +1 to include the space after
+        selectedWordEnd = wp.index;
+      }
+    }
+    
+    // Method 2: If position-based detection failed, try exact word matching
+    if (selectedWordStart === -1 || selectedWordEnd === -1) {
+      // Try to find exact word match first
+      const exactWordIndex = words.findIndex(w => w === selectedTextTrimmed);
+      if (exactWordIndex !== -1) {
+        selectedWordStart = exactWordIndex;
+        selectedWordEnd = exactWordIndex;
+      } else {
+        // Try partial matching
+        for (let i = 0; i < words.length; i++) {
+          if (words[i] === selectedTextTrimmed || 
+              words[i].includes(selectedTextTrimmed) || 
+              selectedTextTrimmed.includes(words[i])) {
+            if (selectedWordStart === -1) selectedWordStart = i;
+            selectedWordEnd = i;
+            break; // Only match the first occurrence
+          }
+        }
+      }
+    }
+    
+    // If selection spans multiple words, get the range
+    if (selectedWordStart !== -1 && selectedWordEnd !== -1) {
+      // Special case: Last word with integer+integer pattern (like "64+2")
+      if (selectedWordStart === words.length - 1 && selectedWordEnd === words.length - 1) {
+        const patternMatch = selectedTextTrimmed.match(/\b(\d+\+\d+)\b/);
+        if (patternMatch) {
+          return {
+            type: 'position_based',
+            position_type: 'last_segment_pattern',
+            pattern: 'integer_plus_integer',
+            description: 'Extract integer+integer pattern from last segment'
+          };
+        }
+      }
+      
+      // ALWAYS use word_position for single word selections (dynamic position)
+      if (selectedWordStart === selectedWordEnd) {
+        return {
+          type: 'position_based',
+          position_type: 'word_position',
+          wordPosition: selectedWordStart,
+          description: `Extract word at position ${selectedWordStart + 1}`
+        };
+      }
+      
+      // Selection spans multiple words - extract range
+      return {
+        type: 'position_based',
+        position_type: 'word_range',
+        startWord: selectedWordStart,
+        endWord: selectedWordEnd,
+        description: `Extract words ${selectedWordStart + 1} to ${selectedWordEnd + 1}`
+      };
+    }
+    
+    // Fallback: try to find position by text matching
+    const selectedIndex = fullText.indexOf(selectedTextTrimmed);
+    if (selectedIndex !== -1) {
+      // Count words before the selection to determine word position
+      const textBeforeSelection = fullText.substring(0, selectedIndex).trim();
+      const wordsBefore = textBeforeSelection ? textBeforeSelection.split(/\s+/) : [];
+      const wordPosition = wordsBefore.length;
+      
+      // Check if it's the last word and matches integer+integer pattern
+      if (wordPosition === words.length - 1) {
+        const patternMatch = selectedTextTrimmed.match(/\b(\d+\+\d+)\b/);
+        if (patternMatch) {
+          return {
+            type: 'position_based',
+            position_type: 'last_segment_pattern',
+            pattern: 'integer_plus_integer',
+            description: 'Extract integer+integer pattern from last segment'
+          };
+        }
+      }
+      
+      // Use word_position for dynamic extraction
+      if (wordPosition < words.length) {
+        return {
+          type: 'position_based',
+          position_type: 'word_position',
+          wordPosition: wordPosition,
+          description: `Extract word at position ${wordPosition + 1}`
+        };
+      }
+      
+      // Check if there's a space before it (might be after a marker)
+      const beforeText = fullText.substring(0, selectedIndex).trim();
+      const lastSpaceBefore = beforeText.lastIndexOf(' ');
+      if (lastSpaceBefore !== -1) {
+        const marker = beforeText.substring(lastSpaceBefore + 1);
+        return {
+          type: 'position_based',
+          position_type: 'after',
+          marker: marker,
+          description: `Extract text after "${marker}"`
+        };
+      }
+    }
+    
+    // Default: use word position if we can find it by text matching
+    const wordIndexInText = words.findIndex(w => w === selectedTextTrimmed || w.includes(selectedTextTrimmed) || selectedTextTrimmed.includes(w));
+    if (wordIndexInText !== -1) {
+      // Check if it's the last word and matches integer+integer pattern
+      if (wordIndexInText === words.length - 1) {
+        const patternMatch = selectedTextTrimmed.match(/\b(\d+\+\d+)\b/);
+        if (patternMatch) {
+          return {
+            type: 'position_based',
+            position_type: 'last_segment_pattern',
+            pattern: 'integer_plus_integer',
+            description: 'Extract integer+integer pattern from last segment'
+          };
+        }
+      }
+      
+      // Use word_position for dynamic extraction
+      return {
+        type: 'position_based',
+        position_type: 'word_position',
+        wordPosition: wordIndexInText,
+        description: `Extract word at position ${wordIndexInText + 1}`
+      };
+    }
+    
+    // Ultimate fallback: return null to use literal regex
+    return null;
   };
 
   const extractByPosition = (value: string, rule: any) => {
@@ -1570,6 +1911,75 @@ export default function BarcodeDesignerV2() {
           return beforeStorage;
         }
         return value;
+      } else if (positionType === 'last_segment_pattern') {
+        // NEW: Extract integer+integer pattern from last segment (after last space)
+        const lastSpaceIndex = value.lastIndexOf(' ');
+        if (lastSpaceIndex !== -1) {
+          // Get everything after the last space
+          const lastSegment = value.substring(lastSpaceIndex + 1).trim();
+          // Try to match integer+integer pattern (like "64+2", "128+4")
+          const patternMatch = lastSegment.match(/\b(\d+\+\d+)\b/);
+          if (patternMatch) {
+            // Return the integer+integer pattern
+            return patternMatch[1];
+          }
+          // If no pattern found, return the entire last segment
+          return lastSegment;
+        }
+        // If no space found, try to match pattern in the whole string
+        const patternMatch = value.match(/\b(\d+\+\d+)\b/);
+        if (patternMatch) {
+          return patternMatch[1];
+        }
+        // Fallback: return the whole value
+        return value;
+      } else if (positionType === 'first_word') {
+        // Extract first word (convert to word_position for consistency)
+        const words = value.trim().split(/\s+/).filter(w => w.length > 0);
+        if (words.length > 0) {
+          const extractedWord = words[0];
+          console.log(`[first_word extraction] Input: "${value}", Words: [${words.join(', ')}], Extracted: "${extractedWord}"`);
+          return extractedWord;
+        }
+        return value;
+      } else if (positionType === 'last_word') {
+        // Extract last word (convert to word_position for consistency)
+        const words = value.trim().split(/\s+/).filter(w => w.length > 0);
+        if (words.length > 0) {
+          const extractedWord = words[words.length - 1];
+          console.log(`[last_word extraction] Input: "${value}", Words: [${words.join(', ')}], Extracted: "${extractedWord}"`);
+          return extractedWord;
+        }
+        return value;
+      } else if (positionType === 'word_position') {
+        // Extract word at specific position (0-indexed) - ONLY that word, nothing else
+        const trimmedValue = value.trim();
+        if (!trimmedValue) return value;
+        
+        // Split by whitespace (handles multiple spaces, tabs, etc.)
+        const words = trimmedValue.split(/\s+/).filter(w => w.length > 0);
+        const wordPos = rule.wordPosition !== undefined ? rule.wordPosition : (rule.word_position !== undefined ? rule.word_position : 0);
+        
+        // Validate position and return ONLY the word at that position
+        if (wordPos >= 0 && wordPos < words.length) {
+          const extractedWord = words[wordPos];
+          // Debug logging (can be removed in production)
+          console.log(`[word_position extraction] Input: "${value}", Position: ${wordPos}, Words: [${words.join(', ')}], Extracted: "${extractedWord}"`);
+          return extractedWord; // Return only this specific word
+        }
+        
+        // If position is out of bounds, log warning and return empty string
+        console.warn(`[word_position extraction] Position ${wordPos} out of bounds for value "${value}" with ${words.length} words`);
+        return '';
+      } else if (positionType === 'word_range') {
+        // Extract range of words
+        const words = value.trim().split(/\s+/);
+        const startWord = rule.startWord !== undefined ? rule.startWord : 0;
+        const endWord = rule.endWord !== undefined ? rule.endWord : words.length - 1;
+        if (startWord >= 0 && endWord < words.length && startWord <= endWord) {
+          return words.slice(startWord, endWord + 1).join(' ');
+        }
+        return value;
       }
       return value;
     } catch (e) {
@@ -1601,12 +2011,14 @@ export default function BarcodeDesignerV2() {
   return (
     <div className="flex h-screen bg-gray-50">
       {/* Left Sidebar - Components */}
-      <div className="w-64 bg-white border-r border-gray-200 p-4 space-y-4">
-        <div className="flex items-center justify-between">
-          <h2 className="text-lg font-semibold">Components</h2>
-          <Badge variant="secondary">{components.length}</Badge>
+      <div className="w-64 bg-white border-r border-gray-200 flex flex-col h-screen overflow-hidden">
+        <div className="p-4 pb-2 flex-shrink-0">
+          <div className="flex items-center justify-between">
+            <h2 className="text-lg font-semibold">Components</h2>
+            <Badge variant="secondary">{components.length}</Badge>
+          </div>
         </div>
-        
+        <div className="flex-1 overflow-y-auto px-4 pb-4">
         <div className="grid grid-cols-2 gap-2">
           <Button
             onClick={() => addComponent("text")}
@@ -1786,19 +2198,24 @@ export default function BarcodeDesignerV2() {
           </Button>
           
           <Button
-            onClick={startTemplateSelection}
+            onClick={() => {
+              setShowMappingModal(true);
+              // If Excel data already exists, we can use it
+              // Otherwise, user will upload in the modal
+            }}
             variant="outline"
             size="sm"
             className="w-full"
           >
             <Upload className="w-4 h-4 mr-2" />
-            Upload Excel
+            Upload Excel & Map
           </Button>
+        </div>
         </div>
       </div>
 
       {/* Center - Canvas */}
-      <div className="flex-1 relative bg-white">
+      <div className="flex-1 relative bg-white overflow-hidden">
         {/* Multi-select indicator */}
         {isMultiSelectMode && selectedComponents.size > 1 && (
           <div className="absolute top-16 left-4 bg-blue-500 text-white px-3 py-1 rounded-lg text-sm font-medium shadow-lg z-10">
@@ -1827,7 +2244,23 @@ export default function BarcodeDesignerV2() {
         {/* Canvas Area */}
         <div 
           className="absolute inset-0 pt-16 overflow-hidden"
-          onClick={() => setSelectedComponent(null)}
+          onClick={(e) => {
+            // Clear selection when clicking on empty canvas
+            // Check if the click target is the canvas container or its background
+            const target = e.target as HTMLElement;
+            if (target === e.currentTarget || target.classList.contains('canvas-background')) {
+              clearSelection();
+            }
+          }}
+          onMouseDown={(e) => {
+            // Also handle mousedown for better empty space detection
+            const target = e.target as HTMLElement;
+            // If clicking on canvas background (not on a component), clear selection
+            if (target === e.currentTarget || 
+                (target.classList && !target.closest('[data-component-id]'))) {
+              clearSelection();
+            }
+          }}
           onTouchStart={handleTouchStart}
           onTouchMove={handleTouchMove}
           onTouchEnd={handleTouchEnd}
@@ -1895,7 +2328,13 @@ export default function BarcodeDesignerV2() {
               margin: '0',
               padding: '0'
             }}
-            onClick={clearSelection}
+            onClick={(e) => {
+              // Clear selection when clicking on empty canvas (not on a component)
+              const target = e.target as HTMLElement;
+              if (target === e.currentTarget || !target.closest('[data-component-id]')) {
+                clearSelection();
+              }
+            }}
           >
             {/* Grid Overlay */}
             {snapToGrid && (
@@ -1948,8 +2387,13 @@ export default function BarcodeDesignerV2() {
           {components.map((component) => (
             <Rnd
               key={component.id}
+              data-component-id={component.id}
               size={{ width: component.width, height: component.height }}
               position={{ x: component.x, y: component.y }}
+              grid={snapToGrid && !preciseMode ? [gridSize, gridSize] : [1, 1]}
+              disableDragging={false}
+              enableResizing={true}
+              bounds="parent"
               style={{
                 margin: '0',
                 padding: '0',
@@ -1957,6 +2401,35 @@ export default function BarcodeDesignerV2() {
                 outline: 'none'
               }}
               onDrag={(e, d) => {
+                // Debug logging for QR code components
+                if (component.type === 'qr') {
+                  console.log(`🔍 QR DRAG: type=${component.type}, d.x=${d.x}, d.y=${d.y}, snapToGrid=${snapToGrid}, gridSize=${gridSize}`);
+                }
+                
+                // For QR codes ONLY: Update position during drag to keep controlled position in sync
+                // This prevents Rnd from reverting to original position on drag stop
+                // We use requestAnimationFrame to batch updates and avoid performance issues
+                if (component.type === 'qr') {
+                  const snappedX = snapToGrid ? snapToGridPosition(d.x, preciseMode) : d.x;
+                  const snappedY = snapToGrid ? snapToGridPosition(d.y, preciseMode) : d.y;
+                  
+                  // Update position during drag for QR codes
+                  requestAnimationFrame(() => {
+                    setComponents(prev => {
+                      const currentComp = prev.find(c => c.id === component.id);
+                      if (!currentComp || (currentComp.x === snappedX && currentComp.y === snappedY)) {
+                        return prev; // No change needed
+                      }
+                      
+                      return prev.map(comp => 
+                        comp.id === component.id 
+                          ? { ...comp, x: snappedX, y: snappedY }
+                          : comp
+                      );
+                    });
+                  });
+                }
+                
                 // Calculate alignment guides during drag (only if enabled)
                 if (showAlignmentGuides) {
                   const draggingComponent = {
@@ -1969,29 +2442,84 @@ export default function BarcodeDesignerV2() {
                 }
               }}
               onDragStop={(e, d) => {
+                // Debug logging for QR code components
+                if (component.type === 'qr') {
+                  console.log(`🔍 QR DRAG STOP: d.x=${d.x}, d.y=${d.y}, snapToGrid=${snapToGrid}, preciseMode=${preciseMode}`);
+                }
+                
                 // Clear alignment guides when drag stops
                 setAlignmentGuides({ horizontal: [], vertical: [] });
                 
+                // Update state immediately - don't delay with requestAnimationFrame
+                // This ensures Rnd's position prop stays in sync
                 if (isMultiSelectMode && selectedComponents.size > 1) {
                   // Multi-select drag: move all selected components
-                  const deltaX = d.x - component.x;
-                  const deltaY = d.y - component.y;
+                  setComponents(prev => {
+                    const currentComp = prev.find(c => c.id === component.id);
+                    if (!currentComp) return prev;
+                    
+                    const deltaX = d.x - currentComp.x;
+                    const deltaY = d.y - currentComp.y;
+                    
+                    return prev.map(comp => {
+                      if (selectedComponents.has(comp.id)) {
+                        const snappedX = snapToGridPosition(comp.x + deltaX, e.shiftKey || preciseMode);
+                        const snappedY = snapToGridPosition(comp.y + deltaY, e.shiftKey || preciseMode);
+                        if (comp.type === 'qr') {
+                          console.log(`🔍 QR MULTI-DRAG: comp.x=${comp.x}, deltaX=${deltaX}, snappedX=${snappedX}`);
+                        }
+                        return {
+                          ...comp,
+                          x: snappedX,
+                          y: snappedY
+                        };
+                      }
+                      return comp;
+                    });
+                  });
                   
-                  setComponents(prev => prev.map(comp => {
-                    if (selectedComponents.has(comp.id)) {
-                      return {
-                        ...comp,
-                        x: snapToGridPosition(comp.x + deltaX, e.shiftKey || preciseMode),
-                        y: snapToGridPosition(comp.y + deltaY, e.shiftKey || preciseMode)
-                      };
-                    }
-                    return comp;
-                  }));
+                  // Save to history after state update
+                  setTimeout(() => {
+                    setComponents(prev => {
+                      saveToHistory(prev);
+                      return prev;
+                    });
+                  }, 0);
                 } else {
-                  // Single component drag
-                  updateComponent(component.id, { 
-                    x: snapToGridPosition(d.x, e.shiftKey || preciseMode), 
-                    y: snapToGridPosition(d.y, e.shiftKey || preciseMode) 
+                  // Single component drag - ensure snap is applied
+                  // Get current component from state to avoid stale closure
+                  setComponents(prev => {
+                    const currentComp = prev.find(c => c.id === component.id);
+                    if (!currentComp) return prev;
+                    
+                    // Calculate snap from the drag position
+                    // Use d.x and d.y which are the actual drag stop positions
+                    const snappedX = snapToGridPosition(d.x, e.shiftKey || preciseMode);
+                    const snappedY = snapToGridPosition(d.y, e.shiftKey || preciseMode);
+                    
+                    if (component.type === 'qr') {
+                      console.log(`🔍 QR SINGLE-DRAG STOP: d.x=${d.x}, d.y=${d.y}, snappedX=${snappedX}, snappedY=${snappedY}`);
+                      console.log(`🔍 QR Current component position in state: x=${currentComp.x}, y=${currentComp.y}`);
+                      console.log(`🔍 QR Component from closure: x=${component.x}, y=${component.y}`);
+                    }
+                    
+                    // Always update position on drag stop - don't check if it's already correct
+                    // Rnd reports the final drag position in d.x and d.y
+                    const newComponents = prev.map(comp => 
+                      comp.id === component.id 
+                        ? { ...comp, x: snappedX, y: snappedY }
+                        : comp
+                    );
+                    
+                    if (component.type === 'qr') {
+                      const updated = newComponents.find(c => c.id === component.id);
+                      console.log(`🔍 QR Updated component position: x=${updated?.x}, y=${updated?.y}`);
+                    }
+                    
+                    // Save to history
+                    saveToHistory(newComponents);
+                    
+                    return newComponents;
                   });
                 }
               }}
@@ -2003,7 +2531,6 @@ export default function BarcodeDesignerV2() {
                   y: snapToGridPosition(position.y, e.shiftKey || preciseMode),
                 })
               }
-              bounds="parent"
               className={
                 selectedComponent === component.id 
                   ? "ring-2 ring-blue-500 ring-inset" 
@@ -2032,7 +2559,7 @@ export default function BarcodeDesignerV2() {
                 }}
                 onClick={(e) => handleComponentClick(component.id, e)}
               >
-                {/* Collapsible Mapping Status - Only visible on hover */}
+                {/* Collapsible Mapping Status - Only visible on hover for mapped components */}
                 <div className="absolute -left-6 top-0 flex flex-col items-center opacity-0 group-hover:opacity-100 transition-opacity duration-200">
                   {/* Collapsible Arrow */}
                   <button
@@ -2060,21 +2587,16 @@ export default function BarcodeDesignerV2() {
                     {componentMappingCollapsed[component.id] ? '▶' : '▼'}
                   </button>
                   
-                  {/* Mapping Status Badge (collapsible) */}
-                  {!componentMappingCollapsed[component.id] && (
-                    <div className="absolute -top-6 left-6 bg-white border rounded px-1 py-0.5 text-xs shadow-sm whitespace-nowrap">
-                      {component.mapping?.isConnected ? (
-                        <span className="text-green-600 flex items-center gap-1">
-                          ✅ {component.mapping?.columnName || 'Static'}
-                        </span>
-                      ) : (
-                        <span className="text-orange-600 flex items-center gap-1">
-                          ⚠️ Unmapped
-                        </span>
-                      )}
+                  {/* Mapping Status Badge (collapsible) - Only for mapped components */}
+                  {!componentMappingCollapsed[component.id] && component.mapping?.isConnected && (
+                    <div className="absolute -top-6 left-6 bg-white border rounded px-1 py-0.5 text-xs shadow-sm whitespace-nowrap z-50">
+                      <span className="text-green-600 flex items-center gap-1">
+                        ✅ {component.mapping?.columnName || 'Static'}
+                      </span>
                     </div>
                   )}
                 </div>
+                
                 
                 {/* Resize handles - only visible when selected */}
                 {selectedComponent === component.id && (
@@ -2260,6 +2782,49 @@ export default function BarcodeDesignerV2() {
             </Rnd>
           ))}
           
+          {/* Unmapped Badges - Only show when component is selected/clicked */}
+          {components
+            .filter(component => !component.mapping?.isConnected && selectedComponent === component.id)
+            .map((component) => (
+              <div 
+                key={`unmapped-badge-${component.id}`}
+                className="absolute bg-white border-2 border-orange-300 rounded px-2 py-1 text-xs shadow-lg whitespace-nowrap cursor-pointer"
+                style={{
+                  left: `${component.x + 6}px`,
+                  top: `${component.y - 30}px`,
+                  zIndex: 10000,
+                  pointerEvents: 'auto',
+                }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  e.preventDefault();
+                  console.log('🔍 Unmapped badge clicked for component:', component.id);
+                  // Get the latest component from state to ensure we have current mapping data
+                  const componentWithMapping = components.find(c => c.id === component.id);
+                  if (componentWithMapping) {
+                    console.log('🔍 Setting componentForMapping with mapping:', componentWithMapping.mapping);
+                    setComponentForMapping(componentWithMapping);
+                    setShowMappingModal(true);
+                  } else {
+                    console.log('🔍 Setting componentForMapping (no mapping found)');
+                    setComponentForMapping(component);
+                    setShowMappingModal(true);
+                  }
+                }}
+                onMouseDown={(e) => {
+                  e.stopPropagation();
+                  e.preventDefault();
+                }}
+                onMouseUp={(e) => {
+                  e.stopPropagation();
+                }}
+              >
+                <span className="text-orange-600 flex items-center gap-1 hover:text-orange-700 hover:bg-orange-50 px-1 py-0.5 rounded transition-colors select-none">
+                  ⚠️ Unmapped
+                </span>
+              </div>
+            ))}
+          
           {/* Text editing overlay */}
           {editingComponent && (
             <div className="absolute inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
@@ -2325,8 +2890,11 @@ export default function BarcodeDesignerV2() {
       </div>
 
       {/* Right Sidebar - Properties */}
-      <div className="w-80 bg-white border-l border-gray-200 p-4">
-        <h2 className="text-lg font-semibold mb-4">Properties</h2>
+      <div className="w-80 bg-white border-l border-gray-200 flex flex-col h-screen overflow-hidden">
+        <div className="p-4 pb-2 flex-shrink-0">
+          <h2 className="text-lg font-semibold">Properties</h2>
+        </div>
+        <div className="flex-1 overflow-y-auto px-4 pb-4">
         
         {/* Grid Settings */}
         <Card className="mb-4">
@@ -2565,7 +3133,7 @@ export default function BarcodeDesignerV2() {
                           <input
                             type="number"
                             value={selectedComponentData.props.letterSpacing || 0}
-                            onChange={(e) => updateComponentProps(selectedComponentData.id, { letterSpacing: parseInt(e.target.value) || 0 })}
+                            onChange={(e) => updateComponentProps(selectedComponentData.id, { letterSpacing: parseFloat(e.target.value) || 0 })}
                             className="w-full px-2 py-1 text-sm border rounded"
                             min="-5"
                             max="20"
@@ -2674,6 +3242,18 @@ export default function BarcodeDesignerV2() {
                             <option value="800">800</option>
                             <option value="900">900</option>
                           </select>
+                        </div>
+                        <div>
+                          <label className="text-xs font-medium text-gray-600">Letter Spacing (px)</label>
+                          <input
+                            type="number"
+                            value={selectedComponentData.props.letterSpacing || 0}
+                            onChange={(e) => updateComponentProps(selectedComponentData.id, { letterSpacing: parseFloat(e.target.value) || 0 })}
+                            className="w-full px-2 py-1 text-sm border rounded"
+                            min="-5"
+                            max="20"
+                            step="0.5"
+                          />
                         </div>
                       </div>
                     </div>
@@ -2784,6 +3364,18 @@ export default function BarcodeDesignerV2() {
                             <option value="900">900</option>
                           </select>
                         </div>
+                        <div>
+                          <label className="text-xs font-medium text-gray-600">Letter Spacing (px)</label>
+                          <input
+                            type="number"
+                            value={selectedComponentData.props.letterSpacing || 0}
+                            onChange={(e) => updateComponentProps(selectedComponentData.id, { letterSpacing: parseFloat(e.target.value) || 0 })}
+                            className="w-full px-2 py-1 text-sm border rounded"
+                            min="-5"
+                            max="20"
+                            step="0.5"
+                          />
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -2871,6 +3463,18 @@ export default function BarcodeDesignerV2() {
                             <option value="800">800</option>
                             <option value="900">900</option>
                           </select>
+                        </div>
+                        <div>
+                          <label className="text-xs font-medium text-gray-600">Letter Spacing (px)</label>
+                          <input
+                            type="number"
+                            value={selectedComponentData.props.letterSpacing || 0}
+                            onChange={(e) => updateComponentProps(selectedComponentData.id, { letterSpacing: parseFloat(e.target.value) || 0 })}
+                            className="w-full px-2 py-1 text-sm border rounded"
+                            min="-5"
+                            max="20"
+                            step="0.5"
+                          />
                         </div>
                       </div>
                     </div>
@@ -2969,6 +3573,18 @@ export default function BarcodeDesignerV2() {
                             <option value="900">900</option>
                           </select>
                         </div>
+                        <div>
+                          <label className="text-xs font-medium text-gray-600">Letter Spacing (px)</label>
+                          <input
+                            type="number"
+                            value={selectedComponentData.props.letterSpacing || 0}
+                            onChange={(e) => updateComponentProps(selectedComponentData.id, { letterSpacing: parseFloat(e.target.value) || 0 })}
+                            className="w-full px-2 py-1 text-sm border rounded"
+                            min="-5"
+                            max="20"
+                            step="0.5"
+                          />
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -3037,6 +3653,7 @@ export default function BarcodeDesignerV2() {
             setShowMappingModal(true);
           }}
         />
+        </div>
       </div>
       
       {/* Import JSON Dialog */}
@@ -3046,7 +3663,11 @@ export default function BarcodeDesignerV2() {
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-semibold">Import JSON Template</h3>
               <button
-                onClick={() => setShowImportDialog(false)}
+                onClick={() => {
+                  setShowImportDialog(false);
+                  setImportJson('');
+                  setSelectedTemplateId('');
+                }}
                 className="text-gray-500 hover:text-gray-700"
               >
                 ✕
@@ -3054,13 +3675,59 @@ export default function BarcodeDesignerV2() {
             </div>
             
             <div className="space-y-4">
+              {/* Load Saved Template Option */}
+              <div>
+                <label className="text-sm font-medium text-gray-600 block mb-2">
+                  Select a saved template (optional):
+                </label>
+                <select
+                  value={selectedTemplateId}
+                  onChange={(e) => handleTemplateSelect(e.target.value)}
+                  className="w-full px-3 py-2 border rounded text-sm"
+                  disabled={loadingTemplates}
+                >
+                  <option value="none">
+                    {loadingTemplates ? 'Loading templates...' : '-- Select a template --'}
+                  </option>
+                  {savedTemplates.map((template) => (
+                    <option key={template.id} value={template.id}>
+                      {template.name || `Template ${template.id}`}
+                    </option>
+                  ))}
+                </select>
+                {savedTemplates.length === 0 && !loadingTemplates && (
+                  <p className="text-xs text-gray-500 mt-1">No saved templates found</p>
+                )}
+                {savedTemplates.length > 0 && (
+                  <p className="text-xs text-gray-500 mt-1">
+                    {savedTemplates.length} template{savedTemplates.length !== 1 ? 's' : ''} available
+                  </p>
+                )}
+              </div>
+
+              <div className="relative">
+                <div className="absolute inset-0 flex items-center">
+                  <div className="w-full border-t border-gray-300"></div>
+                </div>
+                <div className="relative flex justify-center text-sm">
+                  <span className="px-2 bg-white text-gray-500">OR</span>
+                </div>
+              </div>
+              
+              {/* Paste JSON Option */}
               <div>
                 <label className="text-sm font-medium text-gray-600 block mb-2">
                   Paste your JSON template:
                 </label>
                 <textarea
                   value={importJson}
-                  onChange={(e) => setImportJson(e.target.value)}
+                  onChange={(e) => {
+                    setImportJson(e.target.value);
+                    // Clear template selection if user manually edits JSON
+                    if (selectedTemplateId) {
+                      setSelectedTemplateId('');
+                    }
+                  }}
                   placeholder="Paste your JSON template here..."
                   className="w-full h-64 px-3 py-2 border rounded font-mono text-sm"
                 />
@@ -3075,7 +3742,11 @@ export default function BarcodeDesignerV2() {
                   Import Template
                 </button>
                 <button
-                  onClick={() => setShowImportDialog(false)}
+                  onClick={() => {
+                    setShowImportDialog(false);
+                    setImportJson('');
+                    setSelectedTemplateId('');
+                  }}
                   className="bg-gray-500 text-white py-2 px-4 rounded hover:bg-gray-600"
                 >
                   Cancel
@@ -3434,12 +4105,24 @@ export default function BarcodeDesignerV2() {
                                     ✅ {component.mapping.columnName || 'Static'}
                                   </span>
                                 ) : (
-                                  <span className="text-xs px-2 py-1 bg-orange-100 text-orange-700 rounded">
+                                  <button
+                                    onClick={() => {
+                                      // Restore existing mapping if component has one
+                                      const componentWithMapping = components.find(c => c.id === component.id);
+                                      setComponentForMapping(componentWithMapping || component);
+                                    }}
+                                    className="text-xs px-2 py-1 bg-orange-100 text-orange-700 rounded hover:bg-orange-200 transition-colors cursor-pointer"
+                                    title="Click to map this component"
+                                  >
                                     ⚠️ Unmapped
-                                  </span>
+                                  </button>
                                 )}
                                 <button
-                                  onClick={() => setComponentForMapping(component)}
+                                  onClick={() => {
+                                    // Restore existing mapping if component has one
+                                    const componentWithMapping = components.find(c => c.id === component.id);
+                                    setComponentForMapping(componentWithMapping || component);
+                                  }}
                                   className={`text-xs px-3 py-1 rounded ${
                                     componentForMapping?.id === component.id
                                       ? 'bg-blue-600 text-white cursor-default'
@@ -3522,14 +4205,25 @@ export default function BarcodeDesignerV2() {
                               Excel Column:
                             </label>
                             <select
-                              defaultValue={componentForMapping.mapping?.columnName || ''}
+                              value={componentForMapping.mapping?.columnName || ''}
                               onChange={(e) => {
+                                const existingRule = componentForMapping.mapping?.extractionRule;
+                                // Ensure component ID is preserved or added
+                                const defaultRule = e.target.value 
+                                  ? { type: 'direct' as const, componentId: componentForMapping.id, createdAt: Date.now() }
+                                  : { type: 'manual' as const, componentId: componentForMapping.id, createdAt: Date.now() };
+                                
+                                const extractionRule = existingRule 
+                                  ? { ...existingRule, componentId: componentForMapping.id } // Ensure component ID matches
+                                  : defaultRule;
+                                
                                 const updatedComponent = {
                                   ...componentForMapping,
                                   mapping: {
                                     columnName: e.target.value || undefined,
-                                    extractionRule: e.target.value ? { type: 'direct' as const } : { type: 'manual' as const },
-                                    isConnected: !!e.target.value
+                                    extractionRule,
+                                    staticValue: componentForMapping.mapping?.staticValue,
+                                    isConnected: !!e.target.value || !!componentForMapping.mapping?.staticValue
                                   }
                                 };
                                 setComponentForMapping(updatedComponent);
@@ -3537,7 +4231,7 @@ export default function BarcodeDesignerV2() {
                               className="w-full px-3 py-2 border rounded"
                             >
                               <option value="">Select Excel Column...</option>
-                              {excelDataForMapping.headers.map(header => (
+                              {excelDataForMapping?.headers?.map(header => (
                                 <option key={header} value={header}>{header}</option>
                               ))}
                               <option value="">📝 Manual/Static Value</option>
@@ -3552,14 +4246,21 @@ export default function BarcodeDesignerV2() {
                               </label>
                               <input
                                 type="text"
-                                defaultValue={componentForMapping.mapping?.staticValue || ''}
+                                value={componentForMapping.mapping?.staticValue || ''}
                                 onChange={(e) => {
+                                  const uniqueRule = {
+                                    type: 'manual' as const,
+                                    value: e.target.value,
+                                    componentId: componentForMapping.id,
+                                    createdAt: Date.now()
+                                  };
                                   const updatedComponent = {
                                     ...componentForMapping,
                                     mapping: {
+                                      ...componentForMapping.mapping,
                                       staticValue: e.target.value,
-                                      extractionRule: { type: 'manual' as const, value: e.target.value },
-                                      isConnected: !!e.target.value
+                                      extractionRule: uniqueRule,
+                                      isConnected: !!e.target.value || !!componentForMapping.mapping?.columnName
                                     }
                                   };
                                   setComponentForMapping(updatedComponent);
@@ -3582,13 +4283,19 @@ export default function BarcodeDesignerV2() {
                               <div className="grid grid-cols-2 gap-2">
                                 <button
                                   onClick={() => {
+                                    const uniqueRule = {
+                                      type: 'direct' as const,
+                                      componentId: componentForMapping.id,
+                                      createdAt: Date.now()
+                                    };
                                     const updatedComponent = {
                                       ...componentForMapping,
                                       mapping: {
                                         ...componentForMapping.mapping,
-                                        extractionRule: { type: 'direct' as const }
+                                        extractionRule: uniqueRule
                                       }
                                     };
+                                    console.log(`[Rule Creation] Component ${componentForMapping.id}: Created direct rule`);
                                     setComponentForMapping(updatedComponent);
                                   }}
                                   className={`p-2 text-xs border rounded ${
@@ -3600,13 +4307,20 @@ export default function BarcodeDesignerV2() {
                                 </button>
                                 <button
                                   onClick={() => {
+                                    const uniqueRule = {
+                                      type: 'context_based' as const,
+                                      context_type: 'storage',
+                                      componentId: componentForMapping.id,
+                                      createdAt: Date.now()
+                                    };
                                     const updatedComponent = {
                                       ...componentForMapping,
                                       mapping: {
                                         ...componentForMapping.mapping,
-                                        extractionRule: { type: 'context_based' as const, context_type: 'storage' }
+                                        extractionRule: uniqueRule
                                       }
                                     };
+                                    console.log(`[Rule Creation] Component ${componentForMapping.id}: Created storage context rule`);
                                     setComponentForMapping(updatedComponent);
                                   }}
                                   className={`p-2 text-xs border rounded ${
@@ -3619,13 +4333,20 @@ export default function BarcodeDesignerV2() {
                                 </button>
                                 <button
                                   onClick={() => {
+                                    const uniqueRule = {
+                                      type: 'context_based' as const,
+                                      context_type: 'color',
+                                      componentId: componentForMapping.id,
+                                      createdAt: Date.now()
+                                    };
                                     const updatedComponent = {
                                       ...componentForMapping,
                                       mapping: {
                                         ...componentForMapping.mapping,
-                                        extractionRule: { type: 'context_based' as const, context_type: 'color' }
+                                        extractionRule: uniqueRule
                                       }
                                     };
+                                    console.log(`[Rule Creation] Component ${componentForMapping.id}: Created color context rule`);
                                     setComponentForMapping(updatedComponent);
                                   }}
                                   className={`p-2 text-xs border rounded ${
@@ -3638,13 +4359,20 @@ export default function BarcodeDesignerV2() {
                                 </button>
                                 <button
                                   onClick={() => {
+                                    const uniqueRule = {
+                                      type: 'position_based' as const,
+                                      position_type: 'after_storage',
+                                      componentId: componentForMapping.id,
+                                      createdAt: Date.now()
+                                    };
                                     const updatedComponent = {
                                       ...componentForMapping,
                                       mapping: {
                                         ...componentForMapping.mapping,
-                                        extractionRule: { type: 'position_based' as const, position_type: 'after_storage' }
+                                        extractionRule: uniqueRule
                                       }
                                     };
+                                    console.log(`[Rule Creation] Component ${componentForMapping.id}: Created after_storage rule`);
                                     setComponentForMapping(updatedComponent);
                                   }}
                                   className={`p-2 text-xs border rounded ${
@@ -3654,6 +4382,33 @@ export default function BarcodeDesignerV2() {
                                   }`}
                                 >
                                   📍 After Storage
+                                </button>
+                                <button
+                                  onClick={() => {
+                                    const uniqueRule = {
+                                      type: 'position_based' as const,
+                                      position_type: 'last_segment_pattern',
+                                      pattern: 'integer_plus_integer',
+                                      componentId: componentForMapping.id,
+                                      createdAt: Date.now()
+                                    };
+                                    const updatedComponent = {
+                                      ...componentForMapping,
+                                      mapping: {
+                                        ...componentForMapping.mapping,
+                                        extractionRule: uniqueRule
+                                      }
+                                    };
+                                    console.log(`[Rule Creation] Component ${componentForMapping.id}: Created last_segment_pattern rule`);
+                                    setComponentForMapping(updatedComponent);
+                                  }}
+                                  className={`p-2 text-xs border rounded ${
+                                    componentForMapping.mapping?.extractionRule?.type === 'position_based' && 
+                                    componentForMapping.mapping?.extractionRule?.position_type === 'last_segment_pattern'
+                                      ? 'bg-blue-100 border-blue-300' : 'hover:bg-gray-50'
+                                  }`}
+                                >
+                                  🎯 Last Segment (64+2)
                                 </button>
                               </div>
                               
@@ -3731,7 +4486,7 @@ export default function BarcodeDesignerV2() {
                                     {excelDataForMapping?.rows[0] && componentForMapping.mapping?.columnName && (
                                       <div className="bg-gray-50 rounded p-3">
                                         <div className="text-xs text-gray-600 mb-2">
-                                          💡 <strong>Quick Regex Builder:</strong> Select text below to auto-generate regex
+                                          💡 <strong>Smart Position Extraction:</strong> Select any text to automatically extract values from the same position across all Excel rows. The system will detect word position, first/last word, or patterns.
                                         </div>
                                         <div 
                                           className="text-sm font-mono bg-white border rounded p-2 cursor-text select-text"
@@ -3739,31 +4494,122 @@ export default function BarcodeDesignerV2() {
                                             const selection = window.getSelection();
                                             if (selection && selection.toString().trim()) {
                                               const selectedText = selection.toString().trim();
-                                              // Escape special regex characters
-                                              const escapedText = selectedText.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-                                              // Create regex pattern for the selected text
-                                              const regexPattern = `/${escapedText}/gi`;
+                                              const fullText = excelDataForMapping.rows[0][componentForMapping.mapping!.columnName!] || '';
                                               
-                                              const updatedComponent = {
-                                                ...componentForMapping,
-                                                mapping: {
-                                                  ...componentForMapping.mapping,
-                                                  extractionRule: { type: 'regex' as const, value: regexPattern }
+                                              // Get selection range to determine position
+                                              const range = selection.getRangeAt(0);
+                                              
+                                              // Try to get accurate selection position
+                                              let selectionStart = 0;
+                                              let selectionEnd = 0;
+                                              
+                                              // Method 1: Try to get position from text node
+                                              const startContainer = range.startContainer;
+                                              const endContainer = range.endContainer;
+                                              
+                                              if (startContainer.nodeType === Node.TEXT_NODE && endContainer.nodeType === Node.TEXT_NODE) {
+                                                const startTextNode = startContainer as Text;
+                                                const endTextNode = endContainer as Text;
+                                                
+                                                // Get the parent element that contains the full text
+                                                const parentElement = startTextNode.parentElement;
+                                                if (parentElement) {
+                                                  const parentText = parentElement.textContent || '';
+                                                  
+                                                  // Find where the text node appears in the parent
+                                                  const startNodeText = startTextNode.textContent || '';
+                                                  const startNodeIndex = parentText.indexOf(startNodeText);
+                                                  
+                                                  if (startNodeIndex !== -1) {
+                                                    selectionStart = startNodeIndex + range.startOffset;
+                                                  } else {
+                                                    // Fallback: use offset directly if text node is the full text
+                                                    selectionStart = range.startOffset;
+                                                  }
+                                                  
+                                                  // For end position
+                                                  if (startTextNode === endTextNode) {
+                                                    selectionEnd = selectionStart + (range.endOffset - range.startOffset);
+                                                  } else {
+                                                    const endNodeText = endTextNode.textContent || '';
+                                                    const endNodeIndex = parentText.indexOf(endNodeText);
+                                                    if (endNodeIndex !== -1) {
+                                                      selectionEnd = endNodeIndex + range.endOffset;
+                                                    } else {
+                                                      selectionEnd = range.endOffset;
+                                                    }
+                                                  }
+                                                } else {
+                                                  // Fallback: use offsets directly
+                                                  selectionStart = range.startOffset;
+                                                  selectionEnd = range.endOffset;
                                                 }
-                                              };
-                                              setComponentForMapping(updatedComponent);
+                                              } else {
+                                                // Fallback: find position by text matching
+                                                selectionStart = fullText.indexOf(selectedText);
+                                                selectionEnd = selectionStart + selectedText.length;
+                                              }
                                               
-                                              // Clear selection
-                                              selection.removeAllRanges();
-                                              toast.success(`Regex pattern generated: ${regexPattern}`);
+                                              // Analyze position and create appropriate rule
+                                              const positionRule = analyzeTextPosition(fullText, selectedText, selectionStart, selectionEnd);
+                                              
+                                              if (positionRule) {
+                                                // Create position-based rule with component ID for uniqueness
+                                                const uniqueRule = {
+                                                  ...positionRule,
+                                                  componentId: componentForMapping.id, // Ensure rule is tied to this component
+                                                  createdAt: Date.now() // Timestamp for uniqueness
+                                                };
+                                                
+                                                const updatedComponent = {
+                                                  ...componentForMapping,
+                                                  mapping: {
+                                                    ...componentForMapping.mapping,
+                                                    extractionRule: uniqueRule as any
+                                                  }
+                                                };
+                                                
+                                                console.log(`[Rule Creation] Component ${componentForMapping.id} (${componentForMapping.type}): Created unique rule:`, uniqueRule);
+                                                setComponentForMapping(updatedComponent);
+                                                
+                                                // Clear selection
+                                                selection.removeAllRanges();
+                                                toast.success(`Position-based rule created for ${componentForMapping.type} component: ${positionRule.description}`);
+                                              } else {
+                                                // Fallback: use literal regex if position can't be determined
+                                                const escapedText = selectedText.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                                                const regexPattern = `/${escapedText}/gi`;
+                                                
+                                                const uniqueRule = {
+                                                  type: 'regex' as const,
+                                                  value: regexPattern,
+                                                  componentId: componentForMapping.id, // Ensure rule is tied to this component
+                                                  createdAt: Date.now() // Timestamp for uniqueness
+                                                };
+                                                
+                                                const updatedComponent = {
+                                                  ...componentForMapping,
+                                                  mapping: {
+                                                    ...componentForMapping.mapping,
+                                                    extractionRule: uniqueRule
+                                                  }
+                                                };
+                                                
+                                                console.log(`[Rule Creation] Component ${componentForMapping.id} (${componentForMapping.type}): Created unique regex rule:`, uniqueRule);
+                                                setComponentForMapping(updatedComponent);
+                                                
+                                                // Clear selection
+                                                selection.removeAllRanges();
+                                                toast.success(`Regex pattern generated for ${componentForMapping.type} component: ${regexPattern}`);
+                                              }
                                             }
                                           }}
-                                          title="Select any text to auto-generate regex pattern"
+                                          title="Select any text to automatically create a position-based extraction rule"
                                         >
-                                          {excelDataForMapping.rows[0][componentForMapping.mapping.columnName] || 'No data available'}
+                                          {excelDataForMapping.rows[0][componentForMapping.mapping!.columnName!] || 'No data available'}
                                         </div>
                                         <div className="text-xs text-gray-500 mt-1">
-                                          Click and drag to select text → regex pattern auto-generated
+                                          💡 <strong>Tip:</strong> Select any text to create a position-based extraction rule. The system automatically detects if it's the first word, last word, Nth word, or a pattern, and extracts from that same position in all rows.
                                         </div>
                                       </div>
                                     )}
@@ -3774,13 +4620,20 @@ export default function BarcodeDesignerV2() {
                                       <div className="grid grid-cols-2 gap-1">
                                         <button
                                           onClick={() => {
+                                            const uniqueRule = {
+                                              type: 'regex' as const,
+                                              value: '/(SILVER|BLACK|BLUE|WHITE|GOLD)/gi',
+                                              componentId: componentForMapping.id,
+                                              createdAt: Date.now()
+                                            };
                                             const updatedComponent = {
                                               ...componentForMapping,
                                               mapping: {
                                                 ...componentForMapping.mapping,
-                                                extractionRule: { type: 'regex' as const, value: '/(SILVER|BLACK|BLUE|WHITE|GOLD)/gi' }
+                                                extractionRule: uniqueRule
                                               }
                                             };
+                                            console.log(`[Rule Creation] Component ${componentForMapping.id}: Created Colors regex rule`);
                                             setComponentForMapping(updatedComponent);
                                           }}
                                           className="text-xs bg-white border rounded px-2 py-1 hover:bg-gray-50"
@@ -3789,13 +4642,20 @@ export default function BarcodeDesignerV2() {
                                         </button>
                                         <button
                                           onClick={() => {
+                                            const uniqueRule = {
+                                              type: 'regex' as const,
+                                              value: '/(\\d+GB|\\d+MB)/gi',
+                                              componentId: componentForMapping.id,
+                                              createdAt: Date.now()
+                                            };
                                             const updatedComponent = {
                                               ...componentForMapping,
                                               mapping: {
                                                 ...componentForMapping.mapping,
-                                                extractionRule: { type: 'regex' as const, value: '/(\\d+GB|\\d+MB)/gi' }
+                                                extractionRule: uniqueRule
                                               }
                                             };
+                                            console.log(`[Rule Creation] Component ${componentForMapping.id}: Created Storage regex rule`);
                                             setComponentForMapping(updatedComponent);
                                           }}
                                           className="text-xs bg-white border rounded px-2 py-1 hover:bg-gray-50"
@@ -3804,13 +4664,20 @@ export default function BarcodeDesignerV2() {
                                         </button>
                                         <button
                                           onClick={() => {
+                                            const uniqueRule = {
+                                              type: 'regex' as const,
+                                              value: '/(\\d{15})/gi',
+                                              componentId: componentForMapping.id,
+                                              createdAt: Date.now()
+                                            };
                                             const updatedComponent = {
                                               ...componentForMapping,
                                               mapping: {
                                                 ...componentForMapping.mapping,
-                                                extractionRule: { type: 'regex' as const, value: '/(\\d{15})/gi' }
+                                                extractionRule: uniqueRule
                                               }
                                             };
+                                            console.log(`[Rule Creation] Component ${componentForMapping.id}: Created IMEI regex rule`);
                                             setComponentForMapping(updatedComponent);
                                           }}
                                           className="text-xs bg-white border rounded px-2 py-1 hover:bg-gray-50"
@@ -3819,13 +4686,20 @@ export default function BarcodeDesignerV2() {
                                         </button>
                                         <button
                                           onClick={() => {
+                                            const uniqueRule = {
+                                              type: 'regex' as const,
+                                              value: '/([A-Z]{2,}\\d+)/gi',
+                                              componentId: componentForMapping.id,
+                                              createdAt: Date.now()
+                                            };
                                             const updatedComponent = {
                                               ...componentForMapping,
                                               mapping: {
                                                 ...componentForMapping.mapping,
-                                                extractionRule: { type: 'regex' as const, value: '/([A-Z]{2,}\\d+)/gi' }
+                                                extractionRule: uniqueRule
                                               }
                                             };
+                                            console.log(`[Rule Creation] Component ${componentForMapping.id}: Created Model regex rule`);
                                             setComponentForMapping(updatedComponent);
                                           }}
                                           className="text-xs bg-white border rounded px-2 py-1 hover:bg-gray-50"
@@ -3857,9 +4731,20 @@ export default function BarcodeDesignerV2() {
                                   'No preview available')}
                               </div>
                               {componentForMapping.mapping?.extractionRule && componentForMapping.mapping.extractionRule.type !== 'direct' && (
-                                <div className="text-xs text-gray-500 mt-1">
-                                  Rule applied: {componentForMapping.mapping.extractionRule.type}
-                                  {componentForMapping.mapping.extractionRule.value && ` (${componentForMapping.mapping.extractionRule.value})`}
+                                <div className="text-xs text-gray-500 mt-1 space-y-1">
+                                  <div>
+                                    <span className="font-semibold">Rule applied:</span> {componentForMapping.mapping.extractionRule.type}
+                                    {componentForMapping.mapping.extractionRule.type === 'position_based' && componentForMapping.mapping.extractionRule.position_type === 'word_position' && 
+                                      ` - Word at position ${(componentForMapping.mapping.extractionRule.wordPosition ?? 0) + 1}`}
+                                    {componentForMapping.mapping.extractionRule.type === 'position_based' && componentForMapping.mapping.extractionRule.position_type === 'last_segment_pattern' && 
+                                      ` - Integer+integer pattern from last segment`}
+                                    {componentForMapping.mapping.extractionRule.value && ` (${componentForMapping.mapping.extractionRule.value})`}
+                                  </div>
+                                  {componentForMapping.mapping.extractionRule.componentId && (
+                                    <div className="text-xs text-blue-600 font-mono">
+                                      🔒 Unique to: {componentForMapping.type} component ({componentForMapping.mapping.extractionRule.componentId.slice(0, 8)}...)
+                                    </div>
+                                  )}
                                 </div>
                               )}
                             </div>
@@ -3869,11 +4754,41 @@ export default function BarcodeDesignerV2() {
                           <div className="flex gap-2 pt-2">
                             <button
                               onClick={() => {
-                                setComponents(prev => prev.map(comp => 
-                                  comp.id === componentForMapping.id ? componentForMapping : comp
-                                ));
+                                // Validate that the rule is unique to this component
+                                if (componentForMapping.mapping?.extractionRule) {
+                                  const rule = componentForMapping.mapping.extractionRule;
+                                  // Ensure component ID matches (safety check)
+                                  if (rule.componentId && rule.componentId !== componentForMapping.id) {
+                                    console.warn(`[Rule Validation] Rule componentId mismatch! Rule: ${rule.componentId}, Component: ${componentForMapping.id}`);
+                                    // Fix the mismatch
+                                    componentForMapping.mapping.extractionRule = {
+                                      ...rule,
+                                      componentId: componentForMapping.id
+                                    };
+                                  } else if (!rule.componentId) {
+                                    // Add component ID if missing
+                                    componentForMapping.mapping.extractionRule = {
+                                      ...rule,
+                                      componentId: componentForMapping.id
+                                    };
+                                  }
+                                }
+                                
+                                // Save only this specific component's mapping
+                                setComponents(prev => {
+                                  const updated = prev.map(comp => {
+                                    if (comp.id === componentForMapping.id) {
+                                      console.log(`[Save Mapping] Saving unique rule for component ${comp.id} (${comp.type}):`, componentForMapping.mapping?.extractionRule);
+                                      return componentForMapping;
+                                    }
+                                    // Ensure other components are not affected
+                                    return comp;
+                                  });
+                                  return updated;
+                                });
+                                
                                 setComponentForMapping(null);
-                                toast.success('Component mapping saved!');
+                                toast.success(`Component mapping saved! Rule is unique to this ${componentForMapping.type} component.`);
                               }}
                               className="flex-1 bg-green-500 text-white py-2 px-4 rounded hover:bg-green-600"
                             >

@@ -18,6 +18,7 @@ export interface BarcodeComponent {
     borderWidth?: number;
     fillColor?: string;
     strokeColor?: string;
+    letterSpacing?: number;
   };
 }
 
@@ -89,32 +90,91 @@ export class BarcodePreviewGenerator {
     height: number,
     properties: BarcodeComponent['properties']
   ): Promise<void> {
-    const { text = '', fontSize = 16, fontFamily = 'Arial', color = '#000000' } = properties;
+    const { text = '', fontSize = 16, fontFamily = 'Arial', color = '#000000', letterSpacing = 0 } = properties;
 
     this.ctx.font = `${fontSize}px ${fontFamily}`;
     this.ctx.fillStyle = color;
     this.ctx.textAlign = 'left';
     this.ctx.textBaseline = 'top';
 
-    // Wrap text if it exceeds width
+    // Render text with letter spacing support
+    if (letterSpacing !== 0) {
+      // Render character by character with spacing
+      this.renderTextWithLetterSpacing(text, x, y, width, height, fontSize, letterSpacing);
+    } else {
+      // Wrap text if it exceeds width (original behavior for no letter spacing)
+      const words = text.split(' ');
+      let line = '';
+      let lineY = y;
+
+      for (let n = 0; n < words.length; n++) {
+        const testLine = line + words[n] + ' ';
+        const metrics = this.ctx.measureText(testLine);
+        const testWidth = metrics.width;
+
+        if (testWidth > width && n > 0) {
+          this.ctx.fillText(line, x, lineY);
+          line = words[n] + ' ';
+          lineY += fontSize;
+        } else {
+          line = testLine;
+        }
+      }
+      this.ctx.fillText(line, x, lineY);
+    }
+  }
+
+  private renderTextWithLetterSpacing(
+    text: string,
+    x: number,
+    y: number,
+    width: number,
+    height: number,
+    fontSize: number,
+    letterSpacing: number
+  ) {
+    // Split text into words for word wrapping
     const words = text.split(' ');
-    let line = '';
-    let lineY = y;
+    let currentX = x;
+    let currentY = y;
+    const lineHeight = fontSize;
 
-    for (let n = 0; n < words.length; n++) {
-      const testLine = line + words[n] + ' ';
-      const metrics = this.ctx.measureText(testLine);
-      const testWidth = metrics.width;
+    for (const word of words) {
+      // Measure word width with letter spacing
+      let wordWidth = 0;
+      for (let i = 0; i < word.length; i++) {
+        const charMetrics = this.ctx.measureText(word[i]);
+        wordWidth += charMetrics.width;
+        if (i < word.length - 1) {
+          wordWidth += letterSpacing;
+        }
+      }
 
-      if (testWidth > width && n > 0) {
-        this.ctx.fillText(line, x, lineY);
-        line = words[n] + ' ';
-        lineY += fontSize;
-      } else {
-        line = testLine;
+      // Check if word fits on current line
+      if (currentX + wordWidth > x + width && currentX > x) {
+        // Move to next line
+        currentX = x;
+        currentY += lineHeight;
+        
+        // Check if we've exceeded height
+        if (currentY + lineHeight > y + height) {
+          break;
+        }
+      }
+
+      // Render word character by character with letter spacing
+      for (let i = 0; i < word.length; i++) {
+        this.ctx.fillText(word[i], currentX, currentY);
+        const charMetrics = this.ctx.measureText(word[i]);
+        currentX += charMetrics.width + letterSpacing;
+      }
+
+      // Add space after word (except for last word)
+      if (words.indexOf(word) < words.length - 1) {
+        const spaceMetrics = this.ctx.measureText(' ');
+        currentX += spaceMetrics.width;
       }
     }
-    this.ctx.fillText(line, x, lineY);
   }
 
   private async renderBarcode(

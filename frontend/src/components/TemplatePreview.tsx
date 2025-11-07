@@ -133,7 +133,22 @@ export const TemplatePreview: React.FC<TemplatePreviewProps> = ({ template }) =>
         ctx.fillStyle = props.color || '#000000';
         ctx.font = `${props.fontWeight || 'normal'} ${props.fontSize || 16}px ${props.fontFamily || 'Arial'}`;
         ctx.textBaseline = 'alphabetic'; // Use alphabetic baseline for proper text rendering
-        ctx.fillText(props.text || sampleData.text || 'Sample Text', 0, height - 5);
+        const text = props.text || sampleData.text || 'Sample Text';
+        const letterSpacing = props.letterSpacing || 0;
+        
+        if (letterSpacing !== 0) {
+          // Render with letter spacing
+          let currentX = 0;
+          const textY = height - 5;
+          for (let i = 0; i < text.length; i++) {
+            ctx.fillText(text[i], currentX, textY);
+            const charMetrics = ctx.measureText(text[i]);
+            currentX += charMetrics.width + letterSpacing;
+          }
+        } else {
+          // Render normally
+          ctx.fillText(text, 0, height - 5);
+        }
         break;
         
       case 'barcode':

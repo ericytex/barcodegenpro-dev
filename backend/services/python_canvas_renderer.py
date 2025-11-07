@@ -34,33 +34,73 @@ class PythonCanvasRenderer:
         self.background_color = background_color
         self.scale_factor = scale_factor
         
-        # Calculate scaled dimensions
-        self.scaled_width = int(canvas_width * scale_factor)
-        self.scaled_height = int(canvas_height * scale_factor)
+        # Use exact canvas dimensions - no scaling for 1:1 match with design
+        # When scale_factor=1.0, render at exact canvas size
+        self.scaled_width = canvas_width
+        self.scaled_height = canvas_height
         
         # Font cache for performance
         self.font_cache = {}
         
-        # Create the main canvas
+        # Create the main canvas at exact canvas dimensions
         self.canvas = Image.new('RGB', (self.scaled_width, self.scaled_height), background_color)
         self.draw = ImageDraw.Draw(self.canvas)
         
-        logger.info(f"🎨 Python Canvas Renderer initialized: {self.scaled_width}x{self.scaled_height} (scale: {scale_factor}x)")
+        logger.info(f"🎨 Python Canvas Renderer initialized: {self.scaled_width}x{self.scaled_height} (scale: {scale_factor}x, exact match)")
     
-    def get_font(self, font_size: int, font_weight: str = 'normal') -> ImageFont.FreeTypeFont:
+    def get_font(self, font_size: int, font_weight: str = 'normal', font_family: str = 'Arial') -> ImageFont.FreeTypeFont:
         """Get font with caching for performance"""
-        cache_key = f"{font_size}_{font_weight}"
+        cache_key = f"{font_size}_{font_weight}_{font_family}"
         
         if cache_key not in self.font_cache:
             try:
-                # Try to load a system font
-                font_paths = [
-                    '/System/Library/Fonts/Arial.ttf',  # macOS
-                    '/System/Library/Fonts/Helvetica.ttc',  # macOS
-                    '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf',  # Linux
-                    '/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf',  # Linux
-                    'C:/Windows/Fonts/arial.ttf',  # Windows
-                ]
+                # Map font family names to system font paths
+                font_family_lower = font_family.lower() if font_family else 'arial'
+                
+                # Define font family mappings
+                font_paths_map = {
+                    'arial': [
+                        '/System/Library/Fonts/Supplemental/Arial.ttf',  # macOS
+                        '/System/Library/Fonts/Arial.ttf',  # macOS (older)
+                        'C:/Windows/Fonts/arial.ttf',  # Windows
+                        'C:/Windows/Fonts/Arial.ttf',  # Windows
+                        '/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf',  # Linux
+                        '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf',  # Linux fallback
+                    ],
+                    'helvetica': [
+                        '/System/Library/Fonts/Helvetica.ttc',  # macOS
+                        '/System/Library/Fonts/Supplemental/Helvetica.ttc',  # macOS
+                        'C:/Windows/Fonts/arial.ttf',  # Windows fallback
+                        '/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf',  # Linux
+                    ],
+                    'times': [
+                        '/System/Library/Fonts/Supplemental/Times New Roman.ttf',  # macOS
+                        'C:/Windows/Fonts/times.ttf',  # Windows
+                        'C:/Windows/Fonts/timesnr.ttf',  # Windows
+                        '/usr/share/fonts/truetype/liberation/LiberationSerif-Regular.ttf',  # Linux
+                    ],
+                    'times new roman': [
+                        '/System/Library/Fonts/Supplemental/Times New Roman.ttf',  # macOS
+                        'C:/Windows/Fonts/times.ttf',  # Windows
+                        'C:/Windows/Fonts/timesnr.ttf',  # Windows
+                        '/usr/share/fonts/truetype/liberation/LiberationSerif-Regular.ttf',  # Linux
+                    ],
+                    'courier': [
+                        '/System/Library/Fonts/Supplemental/Courier New.ttf',  # macOS
+                        'C:/Windows/Fonts/cour.ttf',  # Windows
+                        'C:/Windows/Fonts/courbd.ttf',  # Windows
+                        '/usr/share/fonts/truetype/liberation/LiberationMono-Regular.ttf',  # Linux
+                    ],
+                    'courier new': [
+                        '/System/Library/Fonts/Supplemental/Courier New.ttf',  # macOS
+                        'C:/Windows/Fonts/cour.ttf',  # Windows
+                        'C:/Windows/Fonts/courbd.ttf',  # Windows
+                        '/usr/share/fonts/truetype/liberation/LiberationMono-Regular.ttf',  # Linux
+                    ],
+                }
+                
+                # Get font paths for the requested family, or default to Arial
+                font_paths = font_paths_map.get(font_family_lower, font_paths_map['arial'])
                 
                 font_path = None
                 for path in font_paths:
@@ -69,12 +109,32 @@ class PythonCanvasRenderer:
                         break
                 
                 if font_path:
-                    self.font_cache[cache_key] = ImageFont.truetype(font_path, int(font_size * self.scale_factor))
-                    logger.info(f"✅ Loaded font: {font_path} (size: {font_size * self.scale_factor})")
+                    # Handle font weight (bold)
+                    if font_weight == 'bold' or font_weight == '700':
+                        # Try to find bold variant
+                        bold_paths = [
+                            font_path.replace('.ttf', '-Bold.ttf'),
+                            font_path.replace('.ttf', 'Bold.ttf'),
+                            font_path.replace('Regular', 'Bold'),
+                            font_path.replace('regular', 'bold'),
+                        ]
+                        for bold_path in bold_paths:
+                            if os.path.exists(bold_path):
+                                font_path = bold_path
+                                break
+                    
+                    # Scale fonts to match browser visual rendering
+                    # PIL fonts render smaller visually than browser fonts for the same pixel size
+                    # We use a 1.5x multiplier to match visual appearance
+                    font_scale = 1.5  # Match browser font visual size
+                    scaled_font_size = int(font_size * font_scale)
+                    self.font_cache[cache_key] = ImageFont.truetype(font_path, scaled_font_size)
+                    logger.info(f"✅ Loaded font: {font_path} (family: {font_family}, size: {scaled_font_size} (from {font_size} * {font_scale}), weight: {font_weight})")
                 else:
                     # Fallback to default font
+                    # Use font size directly - no scaling
                     self.font_cache[cache_key] = ImageFont.load_default()
-                    logger.warning(f"⚠️ Using default font for size {font_size}")
+                    logger.warning(f"⚠️ Font not found: {font_family}, using default font for size {font_size}")
                     
             except Exception as e:
                 logger.error(f"❌ Font loading error: {e}")
@@ -90,8 +150,8 @@ class PythonCanvasRenderer:
         mapping = component.get('mapping', {})
         if mapping and mapping.get('isConnected'):
             if mapping.get('columnName'):
-                # Get value from Excel column
-                excel_value = excel_row.get(mapping['columnName'], '')
+                # Get value from Excel column (case-insensitive matching)
+                excel_value = self._get_excel_value_case_insensitive(excel_row, mapping['columnName'])
                 if excel_value:
                     # Apply extraction rule if present
                     extraction_rule = mapping.get('extractionRule', {})
@@ -160,6 +220,52 @@ class PythonCanvasRenderer:
                 if keyword.lower() in column_lower:
                     return column
         return None
+    
+    def _get_excel_value_case_insensitive(self, excel_row: Dict[str, Any], column_name: str) -> Any:
+        """Get Excel value with case-insensitive column name matching"""
+        if not column_name:
+            return ''
+        
+        # First try exact match (fastest)
+        if column_name in excel_row:
+            return excel_row[column_name]
+        
+        # Try case-insensitive match
+        column_name_lower = column_name.lower()
+        for key, value in excel_row.items():
+            if key.lower() == column_name_lower:
+                return value
+        
+        # Try partial match (e.g., "IMEI/SN" matches "IMEI/SN" or "imei/sn")
+        for key, value in excel_row.items():
+            if key.lower().replace('/', '').replace('_', '').replace('-', '') == column_name_lower.replace('/', '').replace('_', '').replace('-', ''):
+                return value
+        
+        return ''
+    
+    def _format_barcode_value(self, template_value: str, excel_value: str) -> str:
+        """Format barcode value to preserve template format (e.g., "IMEI 1 : {value}")"""
+        if not template_value or not excel_value:
+            return excel_value or template_value
+        
+        # Check if template has a pattern like "IMEI 1 : 350544301197847"
+        # Try to extract the prefix (e.g., "IMEI 1 : ") and preserve it
+        import re
+        
+        # Pattern: text before digits (e.g., "IMEI 1 : " before "350544301197847")
+        # Match patterns like "IMEI 1 :", "IMEI:", "SN:", etc.
+        prefix_pattern = r'^([^0-9]+?)(\s*[:\-]\s*)?(\d+.*)$'
+        match = re.match(prefix_pattern, template_value)
+        
+        if match:
+            prefix = match.group(1).strip()
+            separator = match.group(2) if match.group(2) else ' : '
+            # Preserve the format: prefix + separator + excel_value
+            formatted = f"{prefix}{separator}{excel_value}"
+            return formatted
+        
+        # If no pattern found, just return the excel value
+        return excel_value
     
     def apply_extraction_rule(self, value: str, rule: Dict[str, Any]) -> str:
         """Apply text extraction rule to a value"""
@@ -296,6 +402,61 @@ class PythonCanvasRenderer:
                     before_storage = value[:storage_start].strip()
                     return before_storage
                 return value
+            elif position_type == 'last_segment_pattern':
+                # NEW: Extract integer+integer pattern from last segment (after last space)
+                import re
+                last_space_index = value.rfind(' ')
+                if last_space_index != -1:
+                    # Get everything after the last space
+                    last_segment = value[last_space_index + 1:].strip()
+                    # Try to match integer+integer pattern (like "64+2", "128+4")
+                    pattern_match = re.search(r'\b(\d+\+\d+)\b', last_segment)
+                    if pattern_match:
+                        # Return the integer+integer pattern
+                        return pattern_match.group(1)
+                    # If no pattern found, return the entire last segment
+                    return last_segment
+                # If no space found, try to match pattern in the whole string
+                pattern_match = re.search(r'\b(\d+\+\d+)\b', value)
+                if pattern_match:
+                    return pattern_match.group(1)
+                # Fallback: return the whole value
+                return value
+            elif position_type == 'first_word':
+                # Extract first word
+                words = value.strip().split()
+                return words[0] if words else value
+            elif position_type == 'last_word':
+                # Extract last word
+                words = value.strip().split()
+                return words[-1] if words else value
+            elif position_type == 'word_position':
+                # Extract word at specific position (0-indexed) - ONLY that word
+                trimmed_value = value.strip()
+                if not trimmed_value:
+                    return value
+                
+                # Split by whitespace and filter out empty strings (handles multiple spaces, tabs, etc.)
+                words = [w for w in trimmed_value.split() if w]
+                # Support both camelCase and snake_case
+                word_pos = rule.get('wordPosition') or rule.get('word_position', 0)
+                
+                if 0 <= word_pos < len(words):
+                    extracted_word = words[word_pos]
+                    print(f"[word_position extraction] Input: '{value}', Position: {word_pos}, Words: {words}, Extracted: '{extracted_word}'")
+                    return extracted_word  # Return ONLY the word at this position
+                
+                # If position is out of bounds, log warning and return empty string
+                print(f"[word_position extraction] WARNING: Position {word_pos} out of bounds for value '{value}' with {len(words)} words")
+                return ''
+            elif position_type == 'word_range':
+                # Extract range of words
+                words = value.strip().split()
+                start_word = rule.get('startWord', 0)
+                end_word = rule.get('endWord', len(words) - 1)
+                if 0 <= start_word <= end_word < len(words):
+                    return ' '.join(words[start_word:end_word + 1])
+                return value
             else:
                 return value
         except Exception as e:
@@ -343,22 +504,27 @@ class PythonCanvasRenderer:
     def extract_barcode_value(self, component: Dict[str, Any], excel_row: Dict[str, Any]) -> str:
         """Extract barcode value from component properties or Excel data with explicit mapping priority"""
         properties = component.get('properties', {})
+        template_value = properties.get('value', '')  # Original template value (e.g., "IMEI 1 : 350544301197847")
         
         # PRIORITY 1: Check if component has explicit mapping information from frontend
         mapping = component.get('mapping', {})
         if mapping and mapping.get('isConnected'):
             if mapping.get('columnName'):
-                # Get value from Excel column
-                excel_value = excel_row.get(mapping['columnName'], '')
+                # Get value from Excel column (case-insensitive matching)
+                excel_value = self._get_excel_value_case_insensitive(excel_row, mapping['columnName'])
                 if excel_value:
                     # Apply extraction rule if present
                     extraction_rule = mapping.get('extractionRule', {})
                     if extraction_rule:
                         extracted_value = self.apply_extraction_rule(str(excel_value), extraction_rule)
-                        print(f"🎯 Barcode explicit mapping: {mapping['columnName']} -> '{extracted_value}' (rule: {extraction_rule.get('type', 'direct')})")
-                        return extracted_value
-                    print(f"🎯 Barcode explicit mapping: {mapping['columnName']} -> '{excel_value}' (direct)")
-                    return str(excel_value)
+                        # Preserve template format if it contains a placeholder pattern
+                        formatted_value = self._format_barcode_value(template_value, extracted_value)
+                        print(f"🎯 Barcode explicit mapping: {mapping['columnName']} -> '{formatted_value}' (rule: {extraction_rule.get('type', 'direct')})")
+                        return formatted_value
+                    # Preserve template format if it contains a placeholder pattern
+                    formatted_value = self._format_barcode_value(template_value, str(excel_value))
+                    print(f"🎯 Barcode explicit mapping: {mapping['columnName']} -> '{formatted_value}' (direct)")
+                    return formatted_value
             elif mapping.get('staticValue'):
                 # Use static value
                 print(f"🎯 Barcode static value: '{mapping['staticValue']}'")
@@ -391,8 +557,8 @@ class PythonCanvasRenderer:
         mapping = component.get('mapping', {})
         if mapping and mapping.get('isConnected'):
             if mapping.get('columnName'):
-                # Get value from Excel column
-                excel_value = excel_row.get(mapping['columnName'], '')
+                # Get value from Excel column (case-insensitive matching)
+                excel_value = self._get_excel_value_case_insensitive(excel_row, mapping['columnName'])
                 if excel_value:
                     # Apply extraction rule if present
                     extraction_rule = mapping.get('extractionRule', {})
@@ -430,10 +596,12 @@ class PythonCanvasRenderer:
     def render_text_component(self, component: Dict[str, Any], excel_row: Dict[str, Any]):
         """Render a text component"""
         try:
-            x = int(component['x'] * self.scale_factor)
-            y = int(component['y'] * self.scale_factor)
-            width = int(component['width'] * self.scale_factor)
-            height = int(component['height'] * self.scale_factor)
+            # Use exact positions and dimensions from component - no scaling
+            # This ensures 1:1 match with canvas design
+            x = component['x']
+            y = component['y']
+            width = component['width']
+            height = component['height']
             properties = component.get('properties', {})
             
             # Extract text value
@@ -446,25 +614,95 @@ class PythonCanvasRenderer:
             font_size = properties.get('fontSize', 12)
             color = properties.get('color', '#000000')
             font_weight = properties.get('fontWeight', 'normal')
+            font_family = properties.get('fontFamily', 'Arial')  # Get font family from properties
+            letter_spacing = properties.get('letterSpacing', 0)  # Get letter spacing
             
-            # Get font
-            font = self.get_font(font_size, font_weight)
+            # Get font (with font family support)
+            font = self.get_font(font_size, font_weight, font_family)
             
-            # Draw text
-            self.draw.text((x, y), text, font=font, fill=color)
+            # Draw text with letter spacing support
+            if letter_spacing != 0:
+                self._draw_text_with_letter_spacing(text, x, y, width, height, font, color, letter_spacing)
+            else:
+                # Draw text normally (no letter spacing)
+                self.draw.text((x, y), text, font=font, fill=color)
             
-            logger.debug(f"✅ Rendered text: '{text}' at ({x}, {y})")
+            logger.debug(f"✅ Rendered text: '{text}' at ({x}, {y}) with letter spacing: {letter_spacing}")
             
         except Exception as e:
             logger.error(f"❌ Text rendering error: {e}")
     
+    def _draw_text_with_letter_spacing(self, text: str, x: int, y: int, width: int, height: int, 
+                                       font: ImageFont.FreeTypeFont, color: str, letter_spacing: float):
+        """Draw text with letter spacing by rendering characters individually"""
+        try:
+            current_x = x
+            current_y = y
+            line_height = font.size if hasattr(font, 'size') else font.getsize('A')[1]
+            
+            # Split text into words for word wrapping
+            words = text.split(' ')
+            
+            for word in words:
+                # Calculate word width with letter spacing
+                word_width = 0
+                for i, char in enumerate(word):
+                    if hasattr(font, 'getsize'):
+                        char_width = font.getsize(char)[0]
+                    else:
+                        # For newer Pillow versions
+                        bbox = font.getbbox(char)
+                        char_width = bbox[2] - bbox[0]
+                    word_width += char_width
+                    if i < len(word) - 1:  # Not the last character
+                        word_width += letter_spacing
+                
+                # Check if word fits on current line
+                if current_x + word_width > x + width and current_x > x:
+                    # Move to next line
+                    current_x = x
+                    current_y += line_height
+                    
+                    # Check if we've exceeded height
+                    if current_y + line_height > y + height:
+                        break
+                
+                # Render word character by character with letter spacing
+                for char in word:
+                    self.draw.text((current_x, current_y), char, font=font, fill=color)
+                    
+                    # Get character width and advance position
+                    if hasattr(font, 'getsize'):
+                        char_width = font.getsize(char)[0]
+                    else:
+                        # For newer Pillow versions
+                        bbox = font.getbbox(char)
+                        char_width = bbox[2] - bbox[0]
+                    
+                    current_x += char_width + letter_spacing
+                
+                # Add space after word (except for last word)
+                if words.index(word) < len(words) - 1:
+                    if hasattr(font, 'getsize'):
+                        space_width = font.getsize(' ')[0]
+                    else:
+                        bbox = font.getbbox(' ')
+                        space_width = bbox[2] - bbox[0]
+                    current_x += space_width
+                    
+        except Exception as e:
+            logger.error(f"❌ Error rendering text with letter spacing: {e}")
+            # Fallback to normal text rendering
+            self.draw.text((x, y), text, font=font, fill=color)
+    
     def render_barcode_component(self, component: Dict[str, Any], excel_row: Dict[str, Any]):
         """Render a barcode component"""
         try:
-            x = int(component['x'] * self.scale_factor)
-            y = int(component['y'] * self.scale_factor)
-            width = int(component['width'] * self.scale_factor)
-            height = int(component['height'] * self.scale_factor)
+            # Use exact positions and dimensions - no scaling for 1:1 match
+            x = component['x']
+            y = component['y']
+            width = component['width']
+            height = component['height']
             properties = component.get('properties', {})
             
             # Extract barcode value
@@ -509,12 +747,13 @@ class PythonCanvasRenderer:
             logger.error(f"❌ Barcode rendering error: {e}")
     
     def render_qr_component(self, component: Dict[str, Any], excel_row: Dict[str, Any]):
-        """Render a QR code component"""
+        """Render a QR code component - matches frontend approach exactly"""
         try:
-            x = int(component['x'] * self.scale_factor)
-            y = int(component['y'] * self.scale_factor)
-            width = int(component['width'] * self.scale_factor)
-            height = int(component['height'] * self.scale_factor)
+            # Use exact positions and dimensions - no scaling for 1:1 match
+            x = component['x']
+            y = component['y']
+            width = component['width']
+            height = component['height']
             properties = component.get('properties', {})
             
             # Extract QR value
@@ -523,43 +762,95 @@ class PythonCanvasRenderer:
                 logger.warning(f"⚠️ No QR value for component {component.get('id', 'unknown')}")
                 return
             
-            # Generate QR code
+            # Match frontend approach: generate QR at Math.min(width, height) with margin=0
+            # Frontend uses: width: Math.min(component.width, component.height), margin: 0
+            target_size = min(width, height)
+            
+            # Get error correction level from properties (default 'M' to match frontend)
+            error_level = properties.get('errorCorrectionLevel', 'M')
+            error_correction_map = {
+                'L': qrcode.constants.ERROR_CORRECT_L,
+                'M': qrcode.constants.ERROR_CORRECT_M,
+                'Q': qrcode.constants.ERROR_CORRECT_Q,
+                'H': qrcode.constants.ERROR_CORRECT_H,
+            }
+            error_correction = error_correction_map.get(error_level, qrcode.constants.ERROR_CORRECT_M)
+            
+            # Match frontend approach: generate QR at target_size with border=0 (margin=0)
+            # Strategy: Generate QR with auto-fit to determine version, then calculate box_size
+            # to get as close as possible to target_size, then resize if needed
+            
+            # Step 1: Generate QR with auto-fit to determine the required version
+            qr_temp = qrcode.QRCode(
+                version=None,  # Auto-determine version based on data
+                error_correction=error_correction,
+                box_size=1,  # Temporary, we'll recalculate
+                border=0,  # Match frontend margin=0
+            )
+            qr_temp.add_data(qr_value)
+            qr_temp.make(fit=True)
+            
+            # Get the version that was determined
+            # QR code version determines the number of modules (squares)
+            # Version 1 = 21x21 modules, Version 2 = 25x25, etc.
+            # Formula: modules = (version - 1) * 4 + 21
+            qr_version = qr_temp.version
+            modules_per_side = (qr_version - 1) * 4 + 21
+            
+            # Step 2: Calculate box_size to get close to target_size
+            # With border=0, the QR image size = modules_per_side * box_size
+            # So: box_size = target_size / modules_per_side
+            estimated_box_size = max(1, int(target_size / modules_per_side))
+            
+            # Step 3: Generate QR with calculated box_size
             qr = qrcode.QRCode(
-                version=1,
-                error_correction=qrcode.constants.ERROR_CORRECT_M,
-                box_size=10,
-                border=4,
+                version=qr_version,
+                error_correction=error_correction,
+                box_size=estimated_box_size,
+                border=0,  # Match frontend margin=0
             )
             qr.add_data(qr_value)
-            qr.make(fit=True)
+            qr.make(fit=False)  # Use the version we determined, don't refit
             
             # Create QR code image
             qr_img = qr.make_image(fill_color='black', back_color='white')
             
-            # Resize to exact dimensions
-            qr_img = qr_img.resize((width, height), Image.Resampling.LANCZOS)
+            # Step 4: Resize to exact target_size (like frontend does)
+            # Frontend generates at exact width, so we resize to match
+            qr_img = qr_img.resize((target_size, target_size), Image.Resampling.LANCZOS)
             
-            # Paste to canvas
-            self.canvas.paste(qr_img, (x, y))
+            # Now place the QR code at the component position
+            # If component is not square, we center it or scale to fit
+            # Frontend draws it at (x, y) with (width, height), so we should do the same
+            if width == height:
+                # Square component: paste directly
+                self.canvas.paste(qr_img, (x, y))
+            else:
+                # Non-square: resize to fit component dimensions (like frontend does)
+                qr_img_final = qr_img.resize((width, height), Image.Resampling.LANCZOS)
+                self.canvas.paste(qr_img_final, (x, y))
             
-            logger.debug(f"✅ Rendered QR code: '{qr_value}' at ({x}, {y})")
+            logger.debug(f"✅ Rendered QR code: '{qr_value}' at ({x}, {y}) size {width}x{height}, QR size {target_size}x{target_size}")
             
         except Exception as e:
             logger.error(f"❌ QR code rendering error: {e}")
+            import traceback
+            logger.error(f"❌ Traceback: {traceback.format_exc()}")
     
     def render_rectangle_component(self, component: Dict[str, Any], excel_row: Dict[str, Any]):
         """Render a rectangle component"""
         try:
-            x = int(component['x'] * self.scale_factor)
-            y = int(component['y'] * self.scale_factor)
-            width = int(component['width'] * self.scale_factor)
-            height = int(component['height'] * self.scale_factor)
+            # Use exact positions and dimensions - no scaling for 1:1 match
+            x = component['x']
+            y = component['y']
+            width = component['width']
+            height = component['height']
             properties = component.get('properties', {})
             
             # Get rectangle properties
             fill_color = properties.get('fillColor', '#ffffff')
             stroke_color = properties.get('strokeColor', '#000000')
-            stroke_width = int(properties.get('strokeWidth', 1) * self.scale_factor)
+            stroke_width = properties.get('strokeWidth', 1)  # No scaling
             
             # Draw rectangle
             if fill_color != 'transparent':
@@ -575,8 +866,10 @@ class PythonCanvasRenderer:
                 text_value = self.extract_text_value(component, excel_row)
                 
                 if text_value:
-                    # Get text properties
-                    font_size = int(properties.get('fontSize', 16) * self.scale_factor)
+                    # Get text properties - scale fonts to match browser visual rendering
+                    base_font_size = properties.get('fontSize', 16)
+                    font_scale = 1.5  # Match browser font visual size
+                    font_size = int(base_font_size * font_scale)
                     font_color = properties.get('color', '#000000')
                     font_weight = properties.get('fontWeight', 'normal')
                     
@@ -619,15 +912,16 @@ class PythonCanvasRenderer:
     def render_line_component(self, component: Dict[str, Any], excel_row: Dict[str, Any]):
         """Render a line component"""
         try:
-            x = int(component['x'] * self.scale_factor)
-            y = int(component['y'] * self.scale_factor)
-            width = int(component['width'] * self.scale_factor)
-            height = int(component['height'] * self.scale_factor)
+            # Use exact positions and dimensions - no scaling for 1:1 match
+            x = component['x']
+            y = component['y']
+            width = component['width']
+            height = component['height']
             properties = component.get('properties', {})
             
             # Get line properties
             stroke_color = properties.get('strokeColor', '#000000')
-            stroke_width = int(properties.get('strokeWidth', 1) * self.scale_factor)
+            stroke_width = properties.get('strokeWidth', 1)  # No scaling
             
             # Draw line
             self.draw.line([x, y, x + width, y + height], fill=stroke_color, width=stroke_width)
@@ -640,16 +934,17 @@ class PythonCanvasRenderer:
     def render_circle_component(self, component: Dict[str, Any], excel_row: Dict[str, Any]):
         """Render a circle component"""
         try:
-            x = int(component['x'] * self.scale_factor)
-            y = int(component['y'] * self.scale_factor)
-            width = int(component['width'] * self.scale_factor)
-            height = int(component['height'] * self.scale_factor)
+            # Use exact positions and dimensions - no scaling for 1:1 match
+            x = component['x']
+            y = component['y']
+            width = component['width']
+            height = component['height']
             properties = component.get('properties', {})
             
             # Get circle properties
             fill_color = properties.get('fillColor', '#ffffff')
             stroke_color = properties.get('strokeColor', '#000000')
-            stroke_width = int(properties.get('strokeWidth', 1) * self.scale_factor)
+            stroke_width = properties.get('strokeWidth', 1)  # No scaling
             
             # Draw circle (as ellipse)
             if fill_color != 'transparent':
@@ -688,57 +983,59 @@ class PythonCanvasRenderer:
     
     def render_template(self, template: Dict[str, Any], excel_row: Dict[str, Any]) -> Image.Image:
         """Render a complete template with Excel data"""
+        print(f"🎨 CANVAS RENDERER: Starting template rendering")
+        print(f"🎨 CANVAS RENDERER: Template keys: {list(template.keys())}")
+        print(f"🎨 CANVAS RENDERER: Template name: {template.get('name', 'N/A')}")
+        print(f"🎨 CANVAS RENDERER: Template ID: {template.get('id', 'N/A')}")
+        print(f"🎨 CANVAS RENDERER: Components count: {len(template.get('components', []))}")
+        print(f"🎨 CANVAS RENDERER: Excel row keys: {list(excel_row.keys())}")
+        print(f"🎨 CANVAS RENDERER: Canvas size: {template.get('canvas_width', 'N/A')}x{template.get('canvas_height', 'N/A')}")
         try:
             logger.info(f"🎨 Starting template rendering...")
             logger.info(f"🎨 Template: {template.get('name', 'unknown')}")
             logger.info(f"🎨 Excel row keys: {list(excel_row.keys())}")
             
-            # Calculate actual content bounds
+            # Use template's exact canvas dimensions (preserve original design layout)
             components = template.get('components', [])
             if not components:
                 logger.warning("⚠️ No components found in template")
                 return Image.new('RGB', (400, 200), self.background_color)
             
-            # Find the actual content bounds
-            min_x = min(comp.get('x', 0) for comp in components)
-            min_y = min(comp.get('y', 0) for comp in components)
-            max_x = max(comp.get('x', 0) + comp.get('width', 0) for comp in components)
-            max_y = max(comp.get('y', 0) + comp.get('height', 0) for comp in components)
+            # Use the template's canvas dimensions exactly as designed
+            template_canvas_width = template.get('canvas_width', 800)
+            template_canvas_height = template.get('canvas_height', 600)
             
-            # Calculate content dimensions
-            content_width = max_x - min_x
-            content_height = max_y - min_y
-            
-            # Use exact content dimensions with 0 margin
-            padding = 0
-            self.canvas_width = content_width
-            self.canvas_height = content_height
+            self.canvas_width = template_canvas_width
+            self.canvas_height = template_canvas_height
             self.background_color = template.get('background_color', self.background_color)
             
-            # Recalculate scaled dimensions
-            self.scaled_width = int(self.canvas_width * self.scale_factor)
-            self.scaled_height = int(self.canvas_height * self.scale_factor)
+            # Use exact canvas dimensions - no scaling
+            self.scaled_width = self.canvas_width
+            self.scaled_height = self.canvas_height
             
-            logger.info(f"🎨 Content bounds: {min_x},{min_y} to {max_x},{max_y}")
-            logger.info(f"🎨 Content dimensions: {content_width}x{content_height}")
-            logger.info(f"🎨 Canvas dimensions: {self.canvas_width}x{self.canvas_height} -> {self.scaled_width}x{self.scaled_height}")
+            logger.info(f"🎨 Using template canvas dimensions: {self.canvas_width}x{self.canvas_height}")
+            logger.info(f"🎨 Scaled canvas dimensions: {self.scaled_width}x{self.scaled_height} (scale: {self.scale_factor}x)")
             
-            # Create new canvas
+            # Create new canvas with exact template dimensions
             self.canvas = Image.new('RGB', (self.scaled_width, self.scaled_height), self.background_color)
             self.draw = ImageDraw.Draw(self.canvas)
             
-            # Adjust component positions to account for 0 margin (just offset to start at 0,0)
-            adjusted_components = []
-            for component in components:
-                adjusted_component = component.copy()
-                adjusted_component['x'] = component.get('x', 0) - min_x
-                adjusted_component['y'] = component.get('y', 0) - min_y
-                adjusted_components.append(adjusted_component)
+            # Use components with their ORIGINAL positions (no offsetting)
+            # This preserves the exact layout as designed on the frontend canvas
+            logger.info(f"🎨 Rendering {len(components)} components for template {template.get('name', 'unknown')}")
+            print(f"🎨 CANVAS RENDERER: Rendering {len(components)} components with original positions")
             
-            logger.info(f"🎨 Rendering {len(adjusted_components)} components for template {template.get('name', 'unknown')}")
-            
-            for i, component in enumerate(adjusted_components):
-                logger.info(f"🎨 Rendering component {i+1}/{len(adjusted_components)}: {component.get('type', 'unknown')}")
+            for i, component in enumerate(components):
+                comp_type = component.get('type', 'unknown')
+                comp_id = component.get('id', 'unknown')
+                logger.info(f"🎨 Rendering component {i+1}/{len(components)}: {comp_type} (ID: {comp_id})")
+                print(f"🎨 CANVAS RENDERER: Component {i+1}/{len(components)}: {comp_type} at ({component.get('x', 0)}, {component.get('y', 0)})")
+                
+                # Log mapping info for this component
+                mapping = component.get('mapping', {})
+                if mapping:
+                    print(f"   📋 Mapping: isConnected={mapping.get('isConnected', False)}, columnName={mapping.get('columnName', 'N/A')}")
+                
                 self.render_component(component, excel_row)
             
             logger.info(f"✅ Template rendered successfully: {self.scaled_width}x{self.scaled_height}")

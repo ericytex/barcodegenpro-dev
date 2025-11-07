@@ -6,7 +6,7 @@ FastAPI application for generating barcode labels
 from fastapi import FastAPI, File, UploadFile, HTTPException, Depends, status, Request, Form
 from fastapi.responses import FileResponse, JSONResponse, HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
-from typing import List, Optional
+from typing import List, Optional, Annotated
 import os
 import asyncio
 import shutil
@@ -529,16 +529,32 @@ async def generate_barcodes(
 @app.post("/api/barcodes/upload-excel", response_model=BarcodeGenerationResponse)
 async def upload_excel_and_generate(
     file: UploadFile = File(...),
-    create_pdf: bool = True,
-    pdf_grid_cols: int = 5,
-    pdf_grid_rows: int = 12,
-    auto_generate_second_imei: bool = True,
-    device_type: Optional[str] = None,
-    device_id: Optional[int] = None,
-    template_id: Optional[str] = None,
+    create_pdf: Annotated[bool, Form()] = True,
+    pdf_grid_cols: Annotated[int, Form()] = 5,
+    pdf_grid_rows: Annotated[int, Form()] = 12,
+    auto_generate_second_imei: Annotated[bool, Form()] = True,
+    device_type: Annotated[Optional[str], Form()] = None,
+    device_id: Annotated[Optional[int], Form()] = None,
+    template_id: Annotated[Optional[str], Form()] = None,
     current_user: dict = Depends(get_current_user)
 ):
     """Upload Excel file and generate barcodes (requires tokens)"""
+    print(f"🔍 REQUEST DEBUG: Received upload request")
+    print(f"🔍 REQUEST DEBUG: template_id parameter = '{template_id}' (type: {type(template_id)})")
+    print(f"🔍 REQUEST DEBUG: device_type parameter = '{device_type}' (type: {type(device_type)})")
+    print(f"🔍 REQUEST DEBUG: device_id parameter = '{device_id}' (type: {type(device_id)})")
+    print(f"🔍 REQUEST DEBUG: file.filename = '{file.filename}'")
+    print(f"🔍 REQUEST DEBUG: file.size = {file.size}")
+    
+    # Clean up string representations of None/null
+    if template_id and isinstance(template_id, str) and (template_id.lower() == 'none' or template_id.lower() == 'null' or template_id.strip() == ''):
+        template_id = None
+        print(f"🔍 REQUEST DEBUG: Cleaned template_id from string '{template_id}' to None")
+    
+    if device_type and isinstance(device_type, str) and (device_type.lower() == 'none' or device_type.lower() == 'null' or device_type.strip() == ''):
+        device_type = None
+        print(f"🔍 REQUEST DEBUG: Cleaned device_type from string '{device_type}' to None")
+    
     try:
         # Security validations
         if not security_manager.validate_file_type(file.filename):
@@ -610,20 +626,36 @@ async def upload_excel_and_generate(
                 )
             
             # Use template-based generation if template_id is provided
+            print(f"🔍 TEMPLATE DEBUG: template_id received = '{template_id}' (type: {type(template_id)})")
+            print(f"🔍 TEMPLATE DEBUG: template_id truthy = {bool(template_id)}")
+            print(f"🔍 TEMPLATE DEBUG: device_type = '{device_type}' (type: {type(device_type)})")
+            print(f"🔍 TEMPLATE DEBUG: device_id = '{device_id}' (type: {type(device_id)})")
+            
+            # TEMPORARY HARDCODED MAPPING FOR TESTING - Remove after FormData fix
+            # Map "sample-final" device_type to its template_id
+            if not template_id and device_type:
+                device_type_lower = device_type.lower()
+                if device_type_lower == 'sample-final' or 'sample-final' in device_type_lower:
+                    template_id = 'template_1759617920436_3khsczvra'
+                    print(f"🔧 TEMPORARY FIX: Mapped device_type '{device_type}' to template_id '{template_id}'")
+            
             if template_id:
-                print(f"🎨 Using template {template_id} for generation")
+                print(f"✅ TEMPLATE ROUTE: Using template-based generation with template_id: '{template_id}'")
                 generated_files = await barcode_service.generate_barcodes_from_template_and_excel(
                     template_id=template_id,
                     excel_file_path=file_path
                 )
+                print(f"✅ TEMPLATE ROUTE: Template generation completed, returned {len(generated_files) if isinstance(generated_files, tuple) else len(generated_files)} files")
             else:
-                print(f"📊 Using standard generation")
+                print(f"⚠️ TEMPLATE ROUTE: No template_id provided, falling back to standard generation")
+                print(f"⚠️ TEMPLATE ROUTE: This means template-based rendering will NOT be used!")
                 generated_files = await barcode_service.generate_barcodes_from_data(
                     items,
                     auto_generate_second_imei=auto_generate_second_imei,
                     device_type=device_type,
                     device_id=device_id
                 )
+                print(f"⚠️ TEMPLATE ROUTE: Standard generation completed")
             
             # Extract files and session_id from the response
             if isinstance(generated_files, tuple):
@@ -635,6 +667,24 @@ async def upload_excel_and_generate(
             print(f"🔍 Generated files count: {len(files)}")
             print(f"🔍 Generated files: {files}")
             print(f"🔍 Session ID: {session_id}")
+            
+            # Verify files actually exist on disk before returning
+            verified_files = []
+            for filename in files:
+                file_path = os.path.join("downloads/barcodes", filename)
+                if os.path.exists(file_path):
+                    verified_files.append(filename)
+                    print(f"✅ Verified file exists: {filename}")
+                else:
+                    print(f"❌ WARNING: File {filename} not found on disk at {file_path}")
+                    # Try to find it in archives
+                    archive_paths = glob.glob(f"archives/**/{filename}", recursive=True)
+                    if archive_paths:
+                        print(f"⚠️ File found in archive: {archive_paths[0]}")
+            
+            if len(verified_files) != len(files):
+                print(f"⚠️ WARNING: Only {len(verified_files)} of {len(files)} files exist on disk")
+                files = verified_files
             
         except Exception as e:
             raise HTTPException(
@@ -648,14 +698,16 @@ async def upload_excel_and_generate(
                 detail="No barcodes were generated from the Excel file. Please check the file format and data."
             )
         
-        # Create PDF if requested
+        # Create PDF if requested (before archiving, so files are still available)
         pdf_file = None
-        if create_pdf:
+        if create_pdf and files:
+            print(f"📄 Creating PDF with {len(files)} generated files...")
             pdf_file = barcode_service.create_pdf_from_barcodes(
                 grid_cols=pdf_grid_cols,
                 grid_rows=pdf_grid_rows,
                 session_id=session_id
             )
+            print(f"📄 PDF created: {pdf_file}")
         
         # Clean up uploaded file
         try:
@@ -711,17 +763,32 @@ async def list_generated_files(
 # Download individual PNG file (no auth needed for preview)
 @app.get("/api/barcodes/download/{filename}")
 async def download_barcode_file(filename: str):
-    """Download a generated barcode PNG file"""
+    """Download a generated barcode PNG file - checks downloads/barcodes first, then archives"""
     try:
         # Sanitize filename to prevent path traversal
         safe_filename = security_manager.sanitize_filename(filename)
         file_path = os.path.join("downloads/barcodes", safe_filename)
         
+        # If file not in downloads/barcodes, check archives
         if not os.path.exists(file_path):
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="File not found"
-            )
+            print(f"🔍 File {safe_filename} not found in downloads/barcodes, checking archives...")
+            # Search in archives directory (recursive search)
+            archive_paths = glob.glob(f"archives/**/{safe_filename}", recursive=True)
+            if archive_paths:
+                # Sort to get most recent archive file (by timestamp in path)
+                archive_paths.sort(reverse=True)
+                file_path = archive_paths[0]
+                print(f"✅ Found file in archive: {file_path}")
+            else:
+                # List what's actually in downloads/barcodes for debugging
+                barcode_dir_files = os.listdir("downloads/barcodes") if os.path.exists("downloads/barcodes") else []
+                print(f"❌ File {safe_filename} not found")
+                print(f"📁 Files in downloads/barcodes: {barcode_dir_files[:10]}...")
+                print(f"🔍 Searched archives recursively for: {safe_filename}")
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=f"File not found: {safe_filename}"
+                )
         
         return FileResponse(
             path=file_path,

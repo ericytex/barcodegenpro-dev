@@ -1,0 +1,328 @@
+{
+  "id": "template_1762493674588_xq5q6fs0t",
+  "name": "ITEL-BARCODES",
+  "description": "Template created on 11/7/2025",
+  "components": [
+    {
+      "id": "d509faca-5dfb-423e-8156-2230c0f578fb",
+      "type": "barcode",
+      "x": 107,
+      "y": 126,
+      "width": 481,
+      "height": 66,
+      "properties": {
+        "value": "IMEI 1 : 350544301197847",
+        "format": "CODE128"
+      },
+      "mapping": {
+        "columnName": "IMEI",
+        "extractionRule": {
+          "type": "direct"
+        },
+        "isConnected": true
+      }
+    },
+    {
+      "id": "064db268-ad46-46da-9f8a-8e2257f0d7e1",
+      "type": "qr",
+      "x": 610,
+      "y": 122,
+      "width": 124,
+      "height": 131,
+      "properties": {
+        "value": "https://example.com",
+        "size": 100
+      },
+      "mapping": {
+        "columnName": "IMEI",
+        "extractionRule": {
+          "type": "direct"
+        },
+        "isConnected": true
+      }
+    },
+    {
+      "id": "d4eca38b-fc53-4471-aea0-85bf91fac0e8",
+      "type": "rectangle",
+      "x": 691,
+      "y": 74,
+      "width": 40,
+      "height": 43,
+      "properties": {
+        "fillColor": "transparent",
+        "strokeColor": "#000000",
+        "strokeWidth": 2,
+        "text": "",
+        "fontSize": 26,
+        "fontWeight": "normal"
+      },
+      "mapping": {
+        "extractionRule": {
+          "type": "manual",
+          "value": "C"
+        },
+        "staticValue": "C",
+        "isConnected": true
+      }
+    },
+    {
+      "id": "a0a3ff83-6725-4395-86e1-ecd609b72c40",
+      "type": "text",
+      "x": 256,
+      "y": 204,
+      "width": 223,
+      "height": 30,
+      "properties": {
+        "text": "350544301197847",
+        "fontSize": 22,
+        "color": "#000000",
+        "fontWeight": "normal",
+        "letterSpacing": 0
+      },
+      "mapping": {
+        "columnName": "IMEI",
+        "extractionRule": {
+          "type": "direct"
+        },
+        "isConnected": true
+      }
+    },
+    {
+      "id": "a6aed2b4-3f70-4bf7-81c0-dd3e30968ffe",
+      "type": "text",
+      "x": 108,
+      "y": 252,
+      "width": 37,
+      "height": 26,
+      "properties": {
+        "text": "VC:",
+        "fontSize": 20,
+        "color": "#000000",
+        "fontWeight": "normal"
+      },
+      "mapping": {
+        "extractionRule": {
+          "type": "manual",
+          "value": "VC:"
+        },
+        "staticValue": "VC:",
+        "isConnected": true
+      }
+    },
+    {
+      "id": "dfa08861-aa1f-4692-8c75-08a1abfcf4ff",
+      "type": "rectangle",
+      "x": 499,
+      "y": 255,
+      "width": 83,
+      "height": 41,
+      "properties": {
+        "fillColor": "transparent",
+        "strokeColor": "#000000",
+        "strokeWidth": 2,
+        "text": "",
+        "fontWeight": "normal",
+        "fontSize": 20
+      },
+      "mapping": {
+        "columnName": "PRODUCT",
+        "extractionRule": {
+          "type": "position_based",
+          "position_type": "first_word",
+          "description": "Extract first word"
+        },
+        "isConnected": true
+      }
+    },
+    {
+      "id": "0862b479-4c50-48c1-8d45-0748da6787c3",
+      "type": "text",
+      "x": 392,
+      "y": 77,
+      "width": 210,
+      "height": 30,
+      "properties": {
+        "text": "SAPPHIRE BLACK",
+        "fontSize": 20,
+        "color": "#000000",
+        "fontFamily": "Arial",
+        "fontWeight": "normal",
+        "letterSpacing": 0,
+        "wordSpacing": 0
+      },
+      "mapping": {
+        "columnName": "Color",
+        "extractionRule": {
+          "type": "direct"
+        },
+        "isConnected": true
+      }
+    },
+    {
+      "id": "2edf5759-bcd0-4169-be20-0be753335e92",
+      "type": "text",
+      "x": 107,
+      "y": 205,
+      "width": 101,
+      "height": 28,
+      "properties": {
+        "text": "IMEI/SN:",
+        "fontSize": 20,
+        "color": "#000000",
+        "fontFamily": "Arial",
+        "fontWeight": "normal",
+        "letterSpacing": 0,
+        "wordSpacing": 0
+      },
+      "mapping": {
+        "columnName": "IMEI",
+        "extractionRule": {
+          "type": "direct"
+        },
+        "isConnected": true
+      }
+    },
+    {
+      "id": "203947bd-e2a9-488d-8036-2ae77c629c0a",
+      "type": "text",
+      "x": 185,
+      "y": 251,
+      "width": 84,
+      "height": 30,
+      "properties": {
+        "text": "874478",
+        "fontSize": 20,
+        "color": "#000000",
+        "fontFamily": "Arial",
+        "fontWeight": "normal",
+        "letterSpacing": 0,
+        "wordSpacing": 0
+      },
+      "mapping": {
+        "columnName": "VC",
+        "extractionRule": {
+          "type": "direct"
+        },
+        "isConnected": true
+      }
+    },
+    {
+      "id": "f2c628dc-5ba7-4e03-899a-70ba460e9b25",
+      "type": "text",
+      "x": 695,
+      "y": 76,
+      "width": 30,
+      "height": 29,
+      "properties": {
+        "margin": 0,
+        "padding": 0,
+        "text": "C",
+        "fontSize": 23,
+        "color": "#000000",
+        "fontFamily": "Arial",
+        "fontWeight": "normal",
+        "letterSpacing": 0,
+        "wordSpacing": 0
+      },
+      "mapping": {
+        "extractionRule": {
+          "type": "manual",
+          "value": "C"
+        },
+        "staticValue": "C",
+        "isConnected": true
+      }
+    },
+    {
+      "id": "365720c4-f9cd-4547-8d86-89aa9f66b86e",
+      "type": "text",
+      "x": 104,
+      "y": 77,
+      "width": 83,
+      "height": 30,
+      "properties": {
+        "margin": 0,
+        "padding": 0,
+        "text": "Model:",
+        "fontSize": 20,
+        "color": "#000000",
+        "fontFamily": "Arial",
+        "fontWeight": "normal",
+        "letterSpacing": 0,
+        "wordSpacing": 0
+      },
+      "mapping": {
+        "extractionRule": {
+          "type": "manual",
+          "value": "Model:"
+        },
+        "staticValue": "Model:",
+        "isConnected": true
+      }
+    },
+    {
+      "id": "849866e8-809e-44e0-afe1-d97e00d6f3f4",
+      "type": "text",
+      "x": 509,
+      "y": 261,
+      "width": 64,
+      "height": 27,
+      "properties": {
+        "margin": 0,
+        "padding": 0,
+        "text": "64+2",
+        "fontSize": 16,
+        "color": "#000000",
+        "fontFamily": "Arial",
+        "fontWeight": "normal",
+        "letterSpacing": 0,
+        "wordSpacing": 0
+      },
+      "mapping": {
+        "columnName": "PRODUCT",
+        "extractionRule": {
+          "type": "position_based",
+          "position_type": "last_segment_pattern",
+          "pattern": "integer_plus_integer"
+        },
+        "isConnected": true
+      }
+    },
+    {
+      "id": "80133c8b-3c50-47bf-88db-a77afe425bfd",
+      "type": "text",
+      "x": 206,
+      "y": 80,
+      "width": 61,
+      "height": 25,
+      "properties": {
+        "margin": 0,
+        "padding": 0,
+        "text": "A669L",
+        "fontSize": 20,
+        "color": "#000000",
+        "fontFamily": "Arial",
+        "fontWeight": "normal",
+        "letterSpacing": 0,
+        "wordSpacing": 0
+      },
+      "mapping": {
+        "columnName": "PRODUCT",
+        "extractionRule": {
+          "type": "position_based",
+          "position_type": "word_position",
+          "wordPosition": 0,
+          "description": "Extract word at position 1",
+          "componentId": "80133c8b-3c50-47bf-88db-a77afe425bfd",
+          "createdAt": 1762493175525
+        },
+        "isConnected": true
+      }
+    }
+  ],
+  "canvas_width": 800,
+  "canvas_height": 600,
+  "background_color": "#ffffff",
+  "created_at": "2025-11-07T05:34:34.588Z",
+  "updated_at": "2025-11-07T05:34:34.588Z"
+}

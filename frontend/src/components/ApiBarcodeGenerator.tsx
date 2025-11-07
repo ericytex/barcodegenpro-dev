@@ -139,30 +139,32 @@ export function ApiBarcodeGenerator({ data, onBarcodeGenerated }: ApiBarcodeGene
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
-          {/* Device Override - Hidden */}
-          {false && (
-            <div className="space-y-2">
-              <Label className="flex items-center gap-2">
-                <Smartphone className="w-4 h-4" />
-                Device Override (Optional)
-              </Label>
-              <DeviceSelector
-                value={selectedDevice}
-                onChange={handleDeviceChange}
-                placeholder="Select a device to override model and D/N values..."
-                disabled={true}
-              />
-              {selectedDevice && (
-                <div className="text-sm text-muted-foreground p-2 bg-muted/30 rounded">
-                  <strong>Override Active:</strong> Model will be set to "{selectedDevice.model_code}" 
-                  and D/N to "{selectedDevice.default_dn}" for all items.
-                </div>
-              )}
-              <p className="text-xs text-muted-foreground">
-                Device selection is temporarily disabled. Coming in the next version.
-              </p>
-            </div>
-          )}
+          {/* Device Selection */}
+          <div className="space-y-2">
+            <Label className="flex items-center gap-2">
+              <Smartphone className="w-4 h-4" />
+              Device Selection (Optional)
+            </Label>
+            <DeviceSelector
+              value={selectedDevice}
+              onChange={handleDeviceChange}
+              placeholder="Select a device type for specialized barcode generation (e.g., Itel Vision 7 Plus)..."
+            />
+            {selectedDevice && (
+              <div className="text-sm text-muted-foreground p-2 bg-muted/30 rounded">
+                <strong>Selected Device:</strong> {selectedDevice.brand} {selectedDevice.name}
+                <br />
+                <strong>Type:</strong> {selectedDevice.device_type}
+                <br />
+                <strong>Model Code:</strong> {selectedDevice.model_code}
+                <br />
+                <strong>Default D/N:</strong> {selectedDevice.default_dn}
+              </div>
+            )}
+            <p className="text-xs text-muted-foreground">
+              Select a device type (e.g., Itel phones) to generate specialized barcodes with custom templates.
+            </p>
+          </div>
 
           {/* PDF Settings */}
           <div className="space-y-4">

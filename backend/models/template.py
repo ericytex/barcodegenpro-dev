@@ -2,9 +2,9 @@
 Barcode Template Models and Management
 """
 
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, Union
 from datetime import datetime
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator, model_validator
 import json
 import os
 
@@ -18,6 +18,16 @@ class BarcodeComponent(BaseModel):
     height: Optional[int] = None
     properties: Dict[str, Any] = {}
     mapping: Optional[Dict[str, Any]] = None  # Excel mapping information
+    
+    @field_validator('x', 'y', 'width', 'height', mode='before')
+    @classmethod
+    def round_to_int(cls, v):
+        """Round float values to integers for position and size fields"""
+        if v is None:
+            return None
+        if isinstance(v, (int, float)):
+            return int(round(v))
+        return v
 
 
 class BarcodeTemplate(BaseModel):
@@ -30,6 +40,31 @@ class BarcodeTemplate(BaseModel):
     background_color: str = "#ffffff"
     created_at: str
     updated_at: str
+    
+    @field_validator('canvas_width', 'canvas_height', mode='before')
+    @classmethod
+    def round_canvas_to_int(cls, v):
+        """Round float values to integers for canvas dimensions"""
+        if v is None:
+            return v
+        if isinstance(v, (int, float)):
+            return int(round(v))
+        return v
+    
+    @model_validator(mode='before')
+    @classmethod
+    def round_component_values(cls, data):
+        """Round component position and size values to integers before validation"""
+        if isinstance(data, dict) and 'components' in data:
+            components = data.get('components', [])
+            for component in components:
+                if isinstance(component, dict):
+                    # Round x, y, width, height to integers
+                    for field in ['x', 'y', 'width', 'height']:
+                        if field in component and component[field] is not None:
+                            if isinstance(component[field], (int, float)):
+                                component[field] = int(round(component[field]))
+        return data
 
 
 class TemplateManager:

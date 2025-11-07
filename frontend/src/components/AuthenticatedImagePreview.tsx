@@ -43,9 +43,18 @@ export function AuthenticatedImagePreview({
       } catch (err) {
         if (isMounted) {
           const errorMessage = err instanceof Error ? err.message : 'Failed to load image';
-          setError(errorMessage);
+          // Check if it's a 404 error (file not found) - handle gracefully
+          const isNotFound = errorMessage.includes('Not Found') || errorMessage.includes('404');
+          if (isNotFound) {
+            setError('File not available');
+          } else {
+            setError(errorMessage);
+          }
           setLoading(false);
-          onError?.(err instanceof Error ? err : new Error(errorMessage));
+          // Only call onError if it's not a simple 404 (reduce console noise)
+          if (!isNotFound) {
+            onError?.(err instanceof Error ? err : new Error(errorMessage));
+          }
         }
       }
     };

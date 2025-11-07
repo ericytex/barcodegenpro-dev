@@ -109,8 +109,8 @@ const SamsungGalaxyPage: React.FC = () => {
 
         </div>
 
-        {/* Quick Actions Footer */}
-        <div className="mt-8">
+        {/* Quick Actions Footer - Moved to bottom */}
+        <div className="mt-12 pt-8 border-t border-border/50">
           <Card className="shadow-card border-0 glass-effect bg-gradient-to-r from-primary/5 to-accent/5">
             <CardContent className="p-6">
               <div className="flex flex-col md:flex-row items-center justify-between gap-4">

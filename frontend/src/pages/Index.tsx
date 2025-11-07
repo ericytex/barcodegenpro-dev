@@ -49,8 +49,54 @@ const Index = () => {
     setDirectGenerationResults(null); // Clear direct generation results when using normal flow
   };
 
-  const handleDirectGeneration = (files: string[], pdfFile?: string) => {
-    setDirectGenerationResults({ files, pdfFile });
+  const handleDirectGeneration = async (files: string[], pdfFile?: string) => {
+    // Verify files exist before setting results
+    try {
+      // Get list of available files from API
+      const { getApiConfig } = await import('@/lib/api');
+      const apiConfig = getApiConfig();
+      const listResponse = await fetch(`${apiConfig.baseUrl}/api/barcodes/list`, {
+        headers: {
+          'X-API-Key': apiConfig.apiKey,
+        },
+      });
+      
+      if (listResponse.ok) {
+        const listData = await listResponse.json();
+        // Extract filenames from file objects
+        const availableFilenames = listData.files?.map((f: any) => 
+          typeof f === 'string' ? f : (f.filename || f.name || f)
+        ) || [];
+        
+        // Filter to only include files that actually exist (exact match or partial match)
+        const existingFiles = files.filter(filename => {
+          const normalizedFilename = filename.toLowerCase();
+          return availableFilenames.some((available: string) => {
+            const normalizedAvailable = String(available).toLowerCase();
+            return normalizedAvailable === normalizedFilename || 
+                   normalizedAvailable.includes(normalizedFilename) || 
+                   normalizedFilename.includes(normalizedAvailable);
+          });
+        });
+        
+        if (existingFiles.length !== files.length) {
+          const missingCount = files.length - existingFiles.length;
+          console.warn(`⚠️ ${missingCount} file(s) not found on server. Showing ${existingFiles.length} of ${files.length} files.`);
+          console.warn('Missing files:', files.filter(f => !existingFiles.includes(f)));
+        }
+        
+        setDirectGenerationResults({ files: existingFiles.length > 0 ? existingFiles : files, pdfFile });
+      } else {
+        // If list fails, just use the files as-is
+        console.warn('Could not verify files, using response as-is');
+        setDirectGenerationResults({ files, pdfFile });
+      }
+    } catch (error) {
+      console.error('Error verifying files:', error);
+      // Fallback: use files as-is
+      setDirectGenerationResults({ files, pdfFile });
+    }
+    
     setUploadedData([]); // Clear uploaded data when using direct generation
     setSelectedDataForBarcodes([]); // Clear selected data when using direct generation
   };
@@ -206,8 +252,8 @@ const Index = () => {
                     </div>
                   </div>
 
-                  {/* Multiple Barcode Previews (Grid) */}
-                  {directGenerationResults.files.length > 1 && (
+                  {/* Multiple Barcode Previews (Grid) - Hidden per user request */}
+                  {false && directGenerationResults.files.length > 1 && (
                     <div className="space-y-2">
                       <Label className="text-xs text-muted-foreground">
                         All Generated Barcodes ({directGenerationResults.files.length} total)
@@ -224,7 +270,10 @@ const Index = () => {
                               className="w-full h-24 object-contain"
                               fallbackText="Loading..."
                               onError={(error) => {
-                                console.error(`Barcode ${index + 1} preview error:`, error);
+                                // Only log non-404 errors to reduce console noise
+                                if (!error.message.includes('Not Found') && !error.message.includes('404')) {
+                                  console.error(`Barcode ${index + 1} preview error:`, error);
+                                }
                               }}
                             />
                           </div>

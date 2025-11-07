@@ -20,6 +20,7 @@ import csv
 import random
 import aiofiles
 import asyncio
+import json
 from services.archive_manager import ArchiveManager
 from services.node_barcode_service import NodeBarcodeService
 from models.database import BarcodeRecord
@@ -600,8 +601,10 @@ class BarcodeService:
             items = [item.dict() for item in items]
             print(f"🔄 Converted {len(items)} BarcodeItem objects to dictionaries in generate_barcodes_from_data")
         
-        # Archive existing files before generating new ones
+        # Archive existing files before generating new ones (but don't archive files we're about to create)
+        # Only archive if output directory has files from previous sessions
         archive_result = self.archive_existing_files(file_metadata=items)
+        print(f"📦 Archive result: {archive_result.get('total_files', 0)} files archived")
         
         # Create a consistent generation session ID
         session_id = f"session_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
@@ -776,7 +779,14 @@ class BarcodeService:
                     print("🔄 Continuing with file generation...")
                     record_id = None
                 
-                generated_files.append(filename)
+                # Verify file was actually created before adding to list
+                if os.path.exists(filepath):
+                    generated_files.append(filename)
+                    print(f"✅ Generated barcode {index + 1}/{len(items)}: {filename} (verified on disk)")
+                else:
+                    print(f"❌ ERROR: File {filename} was not created at {filepath}")
+                    print(f"❌ File path exists: {os.path.exists(os.path.dirname(filepath))}")
+                    print(f"❌ Output directory: {self.output_dir}")
 
                 # Append to IMEI log if we generated a second IMEI
                 if auto_generate_second_imei and second_value:
@@ -784,8 +794,6 @@ class BarcodeService:
                         self._append_imei_log(imei, second_value)
                     except Exception as e:
                         print(f"⚠️ Warning: Could not append to IMEI log: {e}")
-                
-                print(f"✅ Generated barcode {index + 1}/{len(items)}: {filename}")
                 
             except Exception as e:
                 print(f"❌ Error generating barcode for item {index + 1}: {e}")
@@ -822,30 +830,52 @@ class BarcodeService:
 
     async def generate_barcodes_from_template_and_excel(self, template_id: str, excel_file_path: str) -> tuple[List[str], str]:
         """Generate barcodes using a saved template and Excel data"""
+        print(f"🎨 TEMPLATE SERVICE: Starting template-based generation")
+        print(f"🎨 TEMPLATE SERVICE: template_id = '{template_id}'")
+        print(f"🎨 TEMPLATE SERVICE: excel_file_path = '{excel_file_path}'")
+        
         # Archive existing files before generating new ones
         archive_result = self.archive_existing_files()
+        print(f"🎨 TEMPLATE SERVICE: Archive result: {archive_result.get('total_files', 0)} files archived")
         
         # Create a consistent generation session ID
         session_id = f"template_session_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        print(f"🎨 TEMPLATE SERVICE: Session ID: {session_id}")
         
         try:
             # Load template
+            print(f"🎨 TEMPLATE SERVICE: Loading template with ID: '{template_id}'")
             template_manager = TemplateManager()
             template = template_manager.get_template(template_id)
             
             if not template:
-                raise Exception(f"Template {template_id} not found")
+                error_msg = f"Template {template_id} not found"
+                print(f"❌ TEMPLATE SERVICE ERROR: {error_msg}")
+                raise Exception(error_msg)
             
-            print(f"✅ Template loaded successfully: {template.name}")
-            print(f"✅ Template components: {len(template.components)}")
-            print(f"✅ Template canvas: {template.canvas_width}x{template.canvas_height}")
+            print(f"✅ TEMPLATE SERVICE: Template loaded successfully!")
+            print(f"✅ TEMPLATE SERVICE: Template name: '{template.name}'")
+            print(f"✅ TEMPLATE SERVICE: Template ID: '{template.id}'")
+            print(f"✅ TEMPLATE SERVICE: Template components count: {len(template.components)}")
+            print(f"✅ TEMPLATE SERVICE: Template canvas: {template.canvas_width}x{template.canvas_height}")
+            
+            # Log first few components for debugging
+            if template.components:
+                print(f"🎨 TEMPLATE SERVICE: First 3 components:")
+                for i, comp in enumerate(template.components[:3]):
+                    comp_type = getattr(comp, 'type', 'unknown')
+                    comp_id = getattr(comp, 'id', 'unknown')
+                    print(f"   [{i+1}] Type: {comp_type}, ID: {comp_id}")
             
             # Read Excel file
+            print(f"🎨 TEMPLATE SERVICE: Reading Excel file: {excel_file_path}")
             df = pd.read_excel(excel_file_path)
             items = df.to_dict('records')
             
-            print(f"📊 Processing {len(items)} items with template {template_id}")
-            print(f"📊 Template components: {len(template.components)}")
+            print(f"✅ TEMPLATE SERVICE: Excel file read successfully")
+            print(f"✅ TEMPLATE SERVICE: Excel columns: {list(df.columns)}")
+            print(f"✅ TEMPLATE SERVICE: Excel rows count: {len(items)}")
+            print(f"✅ TEMPLATE SERVICE: Processing {len(items)} items with template '{template.name}' (ID: {template_id})")
             
             generated_files = []
             
@@ -855,25 +885,48 @@ class BarcodeService:
                     filename = f"barcode_{session_id}_{index + 1:04d}.png"
                     output_path = os.path.join(self.output_dir, filename)
                     
-                    await self._create_barcode_with_json_template(template, item, output_path)
-                    generated_files.append(output_path)
+                    print(f"🎨 TEMPLATE SERVICE: Generating barcode {index + 1}/{len(items)}")
+                    print(f"🎨 TEMPLATE SERVICE: Output path: {output_path}")
+                    print(f"🎨 TEMPLATE SERVICE: Item data keys: {list(item.keys())}")
+                    if 'IMEI/SN' in item:
+                        print(f"🎨 TEMPLATE SERVICE: Item IMEI/SN value: '{item.get('IMEI/SN', 'N/A')}'")
                     
-                    print(f"✅ Generated barcode {index + 1}/{len(items)}: {filename}")
+                    await self._create_barcode_with_json_template(template, item, output_path)
+                    
+                    # Verify file was created
+                    if os.path.exists(output_path):
+                        file_size = os.path.getsize(output_path)
+                        # Return just the filename, not the full path (to match other generation methods)
+                        generated_files.append(filename)
+                        print(f"✅ TEMPLATE SERVICE: Generated barcode {index + 1}/{len(items)}: {filename} ({file_size} bytes) at {output_path}")
+                    else:
+                        print(f"❌ TEMPLATE SERVICE ERROR: File was not created: {output_path}")
                     
                 except Exception as e:
-                    print(f"❌ Error generating barcode for item {index + 1}: {e}")
+                    print(f"❌ TEMPLATE SERVICE ERROR: Error generating barcode for item {index + 1}: {e}")
+                    import traceback
+                    print(f"❌ TEMPLATE SERVICE ERROR: Traceback: {traceback.format_exc()}")
             
             # Create PDF
+            print(f"🎨 TEMPLATE SERVICE: Creating PDF from {len(generated_files)} generated files")
             pdf_filename = f"barcode_collection_{session_id}.pdf"
             pdf_path = self.create_pdf_from_barcodes(pdf_filename, session_id=session_id)
             
             if pdf_path:
-                print(f"📄 PDF created: {pdf_path}")
+                print(f"✅ TEMPLATE SERVICE: PDF created successfully: {pdf_path}")
+            else:
+                print(f"⚠️ TEMPLATE SERVICE: PDF creation failed or returned None")
+            
+            print(f"✅ TEMPLATE SERVICE: Template generation completed successfully!")
+            print(f"✅ TEMPLATE SERVICE: Generated {len(generated_files)} barcode files")
+            print(f"✅ TEMPLATE SERVICE: Session ID: {session_id}")
             
             return generated_files, session_id
             
         except Exception as e:
-            print(f"❌ Error in template-based generation: {e}")
+            print(f"❌ TEMPLATE SERVICE ERROR: Error in template-based generation: {e}")
+            import traceback
+            print(f"❌ TEMPLATE SERVICE ERROR: Full traceback: {traceback.format_exc()}")
             return [], f"error_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
     
     def create_pdf_from_barcodes(self, pdf_filename: Optional[str] = None, 
@@ -990,19 +1043,9 @@ class BarcodeService:
         print(f"📄 Total pages: {total_pages}")
         print(f"📐 Grid layout: {grid_cols} columns × {grid_rows} rows")
         
-        # Clean up PNG files immediately after PDF creation to prevent duplication
-        try:
-            png_files = glob.glob(os.path.join(self.output_dir, "*.png"))
-            for png_file in png_files:
-                try:
-                    os.remove(png_file)
-                    print(f"🧹 Cleaned up PNG file: {os.path.basename(png_file)}")
-                except Exception as e:
-                    print(f"⚠️  Warning: Could not remove PNG file {os.path.basename(png_file)}: {e}")
-            if png_files:
-                print(f"✅ Cleaned up {len(png_files)} PNG files after PDF creation")
-        except Exception as e:
-            print(f"⚠️  Warning: Error during PNG cleanup: {e}")
+        # Keep PNG files available for preview - they will be archived on next generation
+        # This allows users to preview individual barcodes even after PDF creation
+        print(f"📦 Keeping {len(barcode_files)} PNG files available for preview (will be archived on next generation)")
         
         return pdf_filename
 
@@ -1079,7 +1122,14 @@ class BarcodeService:
                 )
                 
                 if barcode_filename:
-                    generated_files.append(barcode_filename)
+                    # Verify file exists before adding to list
+                    filepath = os.path.join(self.output_dir, barcode_filename)
+                    if os.path.exists(filepath):
+                        generated_files.append(barcode_filename)
+                        print(f"✅ Verified barcode file exists: {barcode_filename}")
+                    else:
+                        print(f"❌ ERROR: Barcode file {barcode_filename} not found at {filepath}")
+                        print(f"❌ Output directory contents: {os.listdir(self.output_dir) if os.path.exists(self.output_dir) else 'Directory does not exist'}")
                     
                     # Log to database
                     self._log_barcode_generation(processed_item, barcode_filename, device_type, device_id, session_id)
@@ -1256,6 +1306,50 @@ class BarcodeService:
     async def _generate_device_barcode_image(self, item: Dict[str, Any], device_type: str, template_path: str, barcode_type: str, used_imeis: Set[str], session_id: str, item_number: int) -> Optional[str]:
         """Generate barcode image using device-specific template"""
         try:
+            # Check if device_type corresponds to a template (template names become device types)
+            # Try to load template by name first
+            template = self._load_template_by_name(device_type)
+            
+            if template:
+                print(f"📱 Detected template-based device: {device_type}, using template: {template.get('name', 'Unknown')}")
+                filename = f"{device_type}_{item_number:03d}_{datetime.now().strftime('%H%M%S')}.png"
+                filepath = os.path.join(self.output_dir, filename)
+                
+                # Prepare item data for template rendering
+                if self._is_itel_device(device_type):
+                    # Use Itel-specific data preparation
+                    itel_item_data = self._prepare_itel_item_data(item)
+                    await self._create_barcode_with_json_template(template, itel_item_data, filepath)
+                else:
+                    # Use generic template data preparation
+                    await self._create_barcode_with_json_template(template, item, filepath)
+                
+                # Verify file exists before returning
+                if os.path.exists(filepath):
+                    print(f"✅ Generated template-based barcode: {filename} (verified)")
+                    return filename
+                else:
+                    print(f"❌ ERROR: Template barcode file not created: {filepath}")
+                    return None
+            
+            # Check if this is an Itel device - use JSON template rendering (legacy support)
+            if self._is_itel_device(device_type):
+                print(f"📱 Detected Itel device: {device_type}, using Itel template")
+                filename = f"{device_type}_{item_number:03d}_{datetime.now().strftime('%H%M%S')}.png"
+                filepath = os.path.join(self.output_dir, filename)
+                
+                # Load Itel template and render with item data
+                await self._create_itel_barcode_with_template(item, device_type, filepath)
+                
+                # Verify file exists before returning
+                if os.path.exists(filepath):
+                    print(f"✅ Generated Itel barcode: {filename} (verified)")
+                    return filename
+                else:
+                    print(f"❌ ERROR: Itel barcode file not created: {filepath}")
+                    return None
+            
+            # For non-Itel devices, use existing template logic
             # Create barcode content based on type
             if barcode_type == "imei_based":
                 barcode_content = item.get("imei", f"IMEI_{item_number:06d}")
@@ -1273,11 +1367,18 @@ class BarcodeService:
             # Generate barcode image with device-specific template
             await self._create_device_barcode_with_template(item, barcode_content, template_path, filepath, device_type)
             
-            print(f"✅ Generated device barcode: {filename}")
-            return filename
+            # Verify file exists before returning
+            if os.path.exists(filepath):
+                print(f"✅ Generated device barcode: {filename} (verified)")
+                return filename
+            else:
+                print(f"❌ ERROR: Device barcode file not created: {filepath}")
+                return None
             
         except Exception as e:
             print(f"❌ Error generating device barcode image: {str(e)}")
+            import traceback
+            print(f"❌ Traceback: {traceback.format_exc()}")
             return None
 
     async def _create_device_barcode_with_template(self, item: Dict[str, Any], barcode_content: str, template_path: str, output_path: str, device_type: str):
@@ -1374,12 +1475,172 @@ class BarcodeService:
         qr_img = qr.make_image(fill_color="black", back_color="white")
         qr_img.save(output_path, "PNG")
 
+    def _is_itel_device(self, device_type: str) -> bool:
+        """Check if device type is an Itel device"""
+        if not device_type:
+            return False
+        return device_type.lower().startswith("itel_")
+
+    def _load_template_by_name(self, device_type: str) -> Optional[Dict[str, Any]]:
+        """Load template by device_type (which is template name converted to lowercase)"""
+        try:
+            templates_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "templates")
+            
+            if not os.path.exists(templates_dir):
+                print(f"⚠️ Templates directory not found: {templates_dir}")
+                return None
+            
+            # Convert device_type back to template name format (uppercase, spaces instead of underscores)
+            # e.g., "itel2" -> "ITEL2", "itel_bar_code" -> "ITEL BAR CODE"
+            template_name = device_type.replace('_', ' ').upper()
+            template_name_lower = device_type.lower()
+            
+            print(f"🔍 Looking for template with name matching: '{template_name}' or '{template_name_lower}'")
+            
+            # Search for template by name in all template files
+            for filename in os.listdir(templates_dir):
+                if not filename.endswith(".json"):
+                    continue
+                    
+                template_path = os.path.join(templates_dir, filename)
+                try:
+                    with open(template_path, 'r', encoding='utf-8') as f:
+                        template = json.load(f)
+                        template_name_in_file = template.get("name", "").upper()
+                        template_name_in_file_lower = template.get("name", "").lower()
+                        
+                        # Check if template name matches (case-insensitive)
+                        if (template_name_in_file == template_name or 
+                            template_name_in_file_lower == template_name_lower or
+                            template_name_in_file.replace(' ', '_').lower() == template_name_lower or
+                            template_name_lower.replace('_', ' ') in template_name_in_file_lower):
+                            print(f"✅ Loaded template for {device_type}: {template.get('name', filename)} (file: {filename})")
+                            return template
+                except Exception as e:
+                    print(f"⚠️ Error reading template file {filename}: {str(e)}")
+                    continue
+            
+            print(f"⚠️ No template found matching device_type '{device_type}' (looked for name: '{template_name}')")
+            return None
+            
+        except Exception as e:
+            print(f"❌ Error loading template by name: {str(e)}")
+            import traceback
+            print(f"❌ Traceback: {traceback.format_exc()}")
+            return None
+
+    def _load_itel_template(self, device_type: str) -> Optional[Dict[str, Any]]:
+        """Load Itel JSON template from templates directory - now uses template name lookup"""
+        # Use the new template name-based lookup
+        return self._load_template_by_name(device_type)
+
+    def _format_itel_imei(self, imei: str) -> str:
+        """Format IMEI for Itel barcode (e.g., 'IMEI 1 : 350544301197847')"""
+        # Clean and format IMEI
+        imei_clean = ''.join(filter(str.isdigit, str(imei)))
+        if len(imei_clean) == 15:
+            return f"IMEI 1 : {imei_clean}"
+        else:
+            # Pad or truncate to 15 digits
+            if len(imei_clean) < 15:
+                imei_clean = imei_clean.zfill(15)
+            else:
+                imei_clean = imei_clean[:15]
+            return f"IMEI 1 : {imei_clean}"
+
+    def _prepare_itel_item_data(self, item: Dict[str, Any]) -> Dict[str, Any]:
+        """Prepare item data for Itel template rendering with proper field mapping"""
+        # Create a copy of the item
+        itel_data = item.copy()
+        
+        # Ensure IMEI is properly formatted
+        imei = item.get("imei") or item.get("IMEI") or item.get("IMEI/SN") or ""
+        if imei:
+            # Clean IMEI for raw use
+            imei_clean = ''.join(filter(str.isdigit, str(imei)))
+            if len(imei_clean) < 15:
+                imei_clean = imei_clean.zfill(15)
+            elif len(imei_clean) > 15:
+                imei_clean = imei_clean[:15]
+            
+            # Store raw IMEI for other components
+            itel_data["imei"] = imei_clean
+            itel_data["IMEI"] = imei_clean
+            
+            # Format IMEI for barcode component (barcode uses "IMEI/SN" mapping)
+            # The barcode should encode "IMEI 1 : {imei}" format
+            itel_data["IMEI/SN"] = self._format_itel_imei(imei_clean)
+            
+            # Also add formatted version for reference
+            itel_data["itel_imei_formatted"] = self._format_itel_imei(imei_clean)
+        
+        # Map model field
+        model = item.get("model") or item.get("Model") or item.get("MODEL") or ""
+        if model:
+            itel_data["model"] = model
+            itel_data["Model"] = model
+            itel_data["MODEL"] = model
+        
+        # Map product field (for color/storage info)
+        product = item.get("product") or item.get("Product") or item.get("PRODUCT") or ""
+        if product:
+            itel_data["product"] = product
+            itel_data["Product"] = product
+            itel_data["PRODUCT"] = product
+        
+        # Map color field
+        color = item.get("color") or item.get("Color") or item.get("COLOR") or ""
+        if color:
+            itel_data["color"] = color
+            itel_data["Color"] = color
+            itel_data["COLOR"] = color
+        
+        # Map DN field
+        dn = item.get("dn") or item.get("DN") or item.get("d/n") or "M8N7"
+        itel_data["dn"] = dn
+        itel_data["DN"] = dn
+        
+        return itel_data
+
+    async def _create_itel_barcode_with_template(self, item: Dict[str, Any], device_type: str, output_path: str):
+        """Create Itel barcode using JSON template"""
+        try:
+            print(f"🎨 Creating Itel barcode for {device_type}")
+            
+            # Load Itel template
+            template = self._load_itel_template(device_type)
+            if not template:
+                print(f"⚠️ No Itel template found, falling back to default generation")
+                # Fallback to simple QR code
+                imei = item.get("imei") or item.get("IMEI") or "DEFAULT_IMEI"
+                await self._create_simple_qr_code(imei, output_path)
+                return
+            
+            # Prepare item data with proper field mappings
+            itel_item_data = self._prepare_itel_item_data(item)
+            
+            print(f"📊 Itel item data prepared: {list(itel_item_data.keys())}")
+            
+            # Use existing template rendering method
+            await self._create_barcode_with_json_template(template, itel_item_data, output_path)
+            
+            print(f"✅ Itel barcode created successfully: {output_path}")
+            
+        except Exception as e:
+            print(f"❌ Error creating Itel barcode: {str(e)}")
+            import traceback
+            print(f"❌ Traceback: {traceback.format_exc()}")
+            # Fallback to simple QR code
+            imei = item.get("imei") or item.get("IMEI") or "DEFAULT_IMEI"
+            await self._create_simple_qr_code(imei, output_path)
+
     async def _create_barcode_with_json_template(self, template, excel_row: Dict[str, Any], output_path: str):
         """Create barcode image using JSON template and Excel data with Python canvas renderer"""
         try:
-            print(f"🎨 Using Python Canvas Renderer for template-based generation...")
-            print(f"🔍 Template type: {type(template)}")
-            print(f"🔍 Excel row: {excel_row}")
+            print(f"🎨 TEMPLATE RENDERER: Starting template rendering")
+            print(f"🎨 TEMPLATE RENDERER: Template type: {type(template)}")
+            print(f"🎨 TEMPLATE RENDERER: Excel row keys: {list(excel_row.keys())}")
+            print(f"🎨 TEMPLATE RENDERER: Output path: {output_path}")
             
             # Import the Python canvas renderer
             from .python_canvas_renderer import PythonCanvasRenderer
@@ -1398,12 +1659,13 @@ class BarcodeService:
             print(f"🔍 Template dict keys: {list(template_dict.keys())}")
             print(f"🔍 Template components count: {len(template_dict.get('components', []))}")
             
-            # Create Python canvas renderer with reasonable scaling (like dashboard default)
+            # Create Python canvas renderer at 1:1 scale to match canvas exactly
+            # No scaling - render at exact canvas dimensions to match frontend design
             renderer = PythonCanvasRenderer(
                 canvas_width=template_dict.get('canvas_width', 600),  # Use dashboard default
                 canvas_height=template_dict.get('canvas_height', 200),  # Use dashboard default
                 background_color=template_dict.get('background_color', '#ffffff'),
-                scale_factor=2.0  # 2x scaling for good readability without size issues
+                scale_factor=1.0  # 1:1 scale - no scaling, match canvas exactly
             )
             
             print(f"✅ Python canvas renderer created")
@@ -1413,7 +1675,9 @@ class BarcodeService:
             
             print(f"✅ Template rendered, image size: {rendered_image.size}")
             
-            # Save the rendered image
+            # Save the rendered image at scaled size (2x for quality)
+            # The scaled size ensures fonts and elements render at proper visual size
+            # PIL fonts render smaller than browser fonts for the same point size, so the 2x scale compensates
             rendered_image.save(output_path, "PNG")
             print(f"✅ Generated barcode using Python Canvas Renderer: {output_path}")
             
@@ -1574,8 +1838,92 @@ class BarcodeService:
             return value
         elif rule_type == 'manual':
             return rule.get('value', value)
+        elif rule_type == 'position_based':
+            # Delegate to position-based extraction
+            return self._extract_by_position(value, rule)
+        elif rule_type == 'context_based':
+            # Delegate to context-based extraction
+            return self._extract_by_context(value, rule)
         else:
             return value
+    
+    def _extract_by_position(self, value: str, rule: Dict[str, Any]) -> str:
+        """Extract data based on position patterns"""
+        if not value:
+            return value
+        
+        position_type = rule.get('position_type', 'after')
+        
+        if position_type == 'word_position':
+            # Extract word at specific position (0-indexed) - ONLY that word
+            trimmed_value = value.strip()
+            if not trimmed_value:
+                return value
+            
+            # Split by whitespace and filter out empty strings (handles multiple spaces, tabs, etc.)
+            words = [w for w in trimmed_value.split() if w]
+            word_pos = rule.get('wordPosition') or rule.get('word_position', 0)
+            
+            if 0 <= word_pos < len(words):
+                extracted_word = words[word_pos]
+                print(f"[word_position extraction] Input: '{value}', Position: {word_pos}, Words: {words}, Extracted: '{extracted_word}'")
+                return extracted_word  # Return ONLY the word at this position
+            
+            # If position is out of bounds, log warning and return empty string
+            print(f"[word_position extraction] WARNING: Position {word_pos} out of bounds for value '{value}' with {len(words)} words")
+            return ''
+        elif position_type == 'last_segment_pattern':
+            # Extract integer+integer pattern from last segment
+            import re
+            last_space_index = value.rfind(' ')
+            if last_space_index != -1:
+                last_segment = value[last_space_index + 1:].strip()
+                pattern_match = re.search(r'\b(\d+\+\d+)\b', last_segment)
+                if pattern_match:
+                    return pattern_match.group(1)
+                return last_segment
+            pattern_match = re.search(r'\b(\d+\+\d+)\b', value)
+            if pattern_match:
+                return pattern_match.group(1)
+            return value
+        elif position_type == 'first_word':
+            words = value.strip().split()
+            return words[0] if words else value
+        elif position_type == 'last_word':
+            words = value.strip().split()
+            return words[-1] if words else value
+        elif position_type == 'word_range':
+            words = value.strip().split()
+            start_word = rule.get('startWord', 0)
+            end_word = rule.get('endWord', len(words) - 1)
+            if 0 <= start_word <= end_word < len(words):
+                return ' '.join(words[start_word:end_word + 1])
+            return value
+        # Add other position types as needed
+        return value
+    
+    def _extract_by_context(self, value: str, rule: Dict[str, Any]) -> str:
+        """Extract data based on context patterns"""
+        if not value:
+            return value
+        
+        import re
+        context_type = rule.get('context_type', '')
+        
+        if context_type == 'storage':
+            match = re.search(r'\b(\d+\+\d+)\b', value)
+            return match.group(1) if match else value
+        elif context_type == 'color':
+            match = re.search(r'\b(BLACK|WHITE|BLUE|GOLD|SILVER|SLEEK|IRIS|TITANIUM|SHADOW|RED|GREEN|PURPLE|PINK|ORANGE|YELLOW|BROWN|GRAY|GREY)\b', value, re.IGNORECASE)
+            return match.group(1) if match else value
+        elif context_type == 'model':
+            match = re.search(r'\b([A-Z]\d{2,3}[A-Z]?)\b', value)
+            return match.group(1) if match else value
+        elif context_type == 'imei':
+            match = re.search(r'\b(\d{15})\b', value)
+            return match.group(1) if match else value
+        
+        return value
 
     def _smart_map_text(self, template_text: str, excel_row: Dict[str, Any]) -> str:
         """Smart mapping of template text to Excel columns"""
