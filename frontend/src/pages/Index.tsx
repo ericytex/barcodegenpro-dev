@@ -253,7 +253,7 @@ const Index = () => {
                   </div>
 
                   {/* Multiple Barcode Previews (Grid) - Hidden per user request */}
-                  {false && directGenerationResults.files.length > 1 && (
+                  {/* {directGenerationResults.files.length > 1 && (
                     <div className="space-y-2">
                       <Label className="text-xs text-muted-foreground">
                         All Generated Barcodes ({directGenerationResults.files.length} total)
@@ -287,7 +287,7 @@ const Index = () => {
                         )}
                       </div>
                     </div>
-                  )}
+                  )} */}
                 </div>
               )}
               </CardContent>

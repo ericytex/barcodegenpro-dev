@@ -1621,14 +1621,16 @@ export default function BarcodeDesignerV2() {
     switch (rule.type) {
       case 'direct':
         return value;
-      case 'first_word':
+      case 'first_word': {
         // Use improved word splitting (handles multiple spaces)
         const firstWords = value.trim().split(/\s+/).filter(w => w.length > 0);
         return firstWords.length > 0 ? firstWords[0] : value;
-      case 'last_word':
+      }
+      case 'last_word': {
         // Use improved word splitting (handles multiple spaces)
         const lastWords = value.trim().split(/\s+/).filter(w => w.length > 0);
         return lastWords.length > 0 ? lastWords[lastWords.length - 1] : value;
+      }
       case 'regex':
         if (rule.value) {
           try {
@@ -1644,10 +1646,11 @@ export default function BarcodeDesignerV2() {
         return rule.value || value;
       case 'context_based':
         return extractByContext(value, rule.context_type);
-      case 'position_based':
+      case 'position_based': {
         const extracted = extractByPosition(value, rule);
         console.log('[extractTextFromValue] position_based extraction result:', { input: value, output: extracted, rule });
         return extracted;
+      }
       default:
         console.warn('[extractTextFromValue] Unknown rule type:', rule.type);
         return value;
@@ -1658,22 +1661,26 @@ export default function BarcodeDesignerV2() {
     if (!value) return value;
     
     switch (contextType) {
-      case 'storage':
+      case 'storage': {
         // Look for storage patterns like "64+3", "128+4", etc.
         const storageMatch = value.match(/\b(\d+\+\d+)\b/);
         return storageMatch ? storageMatch[1] : value;
-      case 'color':
+      }
+      case 'color': {
         // Look for color patterns
         const colorMatch = value.match(/\b(BLACK|WHITE|BLUE|GOLD|SILVER|SLEEK|IRIS|TITANIUM|SHADOW|RED|GREEN|PURPLE|PINK|ORANGE|YELLOW|BROWN|GRAY|GREY)\b/i);
         return colorMatch ? colorMatch[1] : value;
-      case 'model':
+      }
+      case 'model': {
         // Look for model patterns like "A669L", "X6725B", etc.
         const modelMatch = value.match(/\b([A-Z]\d{2,3}[A-Z]?)\b/);
         return modelMatch ? modelMatch[1] : value;
-      case 'imei':
+      }
+      case 'imei': {
         // Look for IMEI patterns (15-digit numbers)
         const imeiMatch = value.match(/\b(\d{15})\b/);
         return imeiMatch ? imeiMatch[1] : value;
+      }
       default:
         return value;
     }

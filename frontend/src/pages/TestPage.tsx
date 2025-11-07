@@ -93,7 +93,7 @@ function TestPage() {
         </CardHeader>
         <CardContent className="space-y-4">
           {/* Device Selector - Hidden */}
-          {false && (
+          {/* {(
             <div className="space-y-2">
               <Label>Select Device (Optional)</Label>
               <DeviceSelector

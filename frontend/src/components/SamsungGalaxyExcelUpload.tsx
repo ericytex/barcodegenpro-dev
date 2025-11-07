@@ -202,7 +202,6 @@ const SamsungGalaxyExcelUpload: React.FC<SamsungGalaxyExcelUploadProps> = ({
       // Include template ID if a template is selected
       if (selectedTemplate) {
         formData.append('template_id', selectedTemplate.id);
-      } else {
       }
 
       // Ensure proper URL construction

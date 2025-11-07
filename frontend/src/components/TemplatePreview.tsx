@@ -129,7 +129,7 @@ export const TemplatePreview: React.FC<TemplatePreviewProps> = ({ template }) =>
 
     // Set styling based on component type
     switch (type) {
-      case 'text':
+      case 'text': {
         ctx.fillStyle = props.color || '#000000';
         ctx.font = `${props.fontWeight || 'normal'} ${props.fontSize || 16}px ${props.fontFamily || 'Arial'}`;
         ctx.textBaseline = 'alphabetic'; // Use alphabetic baseline for proper text rendering
@@ -150,6 +150,7 @@ export const TemplatePreview: React.FC<TemplatePreviewProps> = ({ template }) =>
           ctx.fillText(text, 0, height - 5);
         }
         break;
+      }
         
       case 'barcode':
         // Use real barcode image if available

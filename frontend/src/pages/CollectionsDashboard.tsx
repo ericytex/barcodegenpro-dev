@@ -56,11 +56,6 @@ const CollectionsDashboard: React.FC = () => {
   const [lastDataLoad, setLastDataLoad] = useState<number>(0);
   const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes in milliseconds
 
-  // Check if user is super admin
-  if (!user?.is_super_admin) {
-    return <Navigate to="/" replace />;
-  }
-
   useEffect(() => {
     const shouldLoadData = () => {
       const now = Date.now();
@@ -77,6 +72,11 @@ const CollectionsDashboard: React.FC = () => {
       console.log('Using cached data (cache still valid)');
     }
   }, []);
+
+  // Check if user is super admin
+  if (!user?.is_super_admin) {
+    return <Navigate to="/" replace />;
+  }
 
   const loadPaymentsData = async () => {
     try {
@@ -318,7 +318,7 @@ const CollectionsDashboard: React.FC = () => {
   const getFilteredAndSortedData = () => {
     if (!optimusData?.data?.data) return [];
     
-    let filtered = optimusData.data.data.filter((transaction: any) => {
+    const filtered = optimusData.data.data.filter((transaction: any) => {
       // Search filter
       const customerName = getCustomerName(transaction.app_transaction_uid);
       const matchesSearch = searchTerm === '' || 

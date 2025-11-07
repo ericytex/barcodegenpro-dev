@@ -43,11 +43,6 @@ export default function SubscriptionPage() {
   const [selectedPlan, setSelectedPlan] = useState<number | null>(null);
   const [phone, setPhone] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-
-  // Check if user is super admin
-  if (!user?.is_super_admin) {
-    return <Navigate to="/" replace />;
-  }
   const [isSubscribing, setIsSubscribing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -55,6 +50,11 @@ export default function SubscriptionPage() {
   useEffect(() => {
     loadSubscriptionData();
   }, []);
+
+  // Check if user is super admin
+  if (!user?.is_super_admin) {
+    return <Navigate to="/" replace />;
+  }
 
   const loadSubscriptionData = async () => {
     setIsLoading(true);

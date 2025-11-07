@@ -118,11 +118,6 @@ const PaymentsDashboard: React.FC = () => {
   const [lastDataLoad, setLastDataLoad] = useState<number>(0);
   const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
 
-  // Check if user is super admin
-  if (!user?.is_super_admin) {
-    return <Navigate to="/" replace />;
-  }
-
   useEffect(() => {
     const shouldLoadData = () => {
       const now = Date.now();
@@ -156,6 +151,11 @@ const PaymentsDashboard: React.FC = () => {
 
     return () => clearInterval(interval);
   }, [syncing]);
+
+  // Check if user is super admin
+  if (!user?.is_super_admin) {
+    return <Navigate to="/" replace />;
+  }
 
   const loadTokenPurchases = async () => {
     setLoading(true);
@@ -368,7 +368,7 @@ const PaymentsDashboard: React.FC = () => {
   const getFilteredAndSortedData = () => {
     if (!purchases?.purchases) return [];
     
-    let filtered = purchases.purchases.filter((purchase) => {
+    const filtered = purchases.purchases.filter((purchase) => {
       // Search filter
       if (searchTerm) {
         const searchLower = searchTerm.toLowerCase();

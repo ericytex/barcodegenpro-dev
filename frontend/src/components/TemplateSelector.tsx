@@ -51,7 +51,6 @@ export const TemplateSelector: React.FC<TemplateSelectorProps> = ({
     if (template) {
       onTemplateSelect(template);
       toast.success(`Selected template: ${template.name}`);
-    } else {
     }
   };
 
