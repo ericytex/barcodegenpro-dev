@@ -22,13 +22,19 @@ COPY index.html ./
 COPY src ./src
 COPY public ./public
 
-# Verify critical files are present (non-blocking)
-RUN echo "=== Checking src/lib directory ===" && \
-    (ls -la src/lib/ || echo "Directory not found") && \
-    echo "=== Checking if api.ts exists ===" && \
-    (test -f src/lib/api.ts && echo "✓ api.ts found" || echo "✗ api.ts NOT found") && \
-    echo "=== Listing all files in src/lib ===" && \
-    (find src/lib -type f || echo "No files found") || true
+# Verify critical files are present and show structure
+RUN echo "=== Verifying file structure ===" && \
+    echo "Current directory: $(pwd)" && \
+    echo "=== Checking if src/lib exists ===" && \
+    (test -d src/lib && echo "✓ src/lib directory exists" || echo "✗ src/lib directory NOT found") && \
+    echo "=== Listing src/lib contents ===" && \
+    (ls -la src/lib/ 2>/dev/null || echo "Cannot list src/lib") && \
+    echo "=== Checking for api.ts ===" && \
+    (test -f src/lib/api.ts && echo "✓ api.ts FOUND" || echo "✗ api.ts NOT FOUND") && \
+    echo "=== Full src/lib file tree ===" && \
+    (find src/lib -type f 2>/dev/null || echo "Cannot find files") && \
+    echo "=== Checking vite.config.ts ===" && \
+    (test -f vite.config.ts && echo "✓ vite.config.ts exists" || echo "✗ vite.config.ts NOT found") || true
 
 # Build argument for API URL (use relative path since nginx proxies /api/)
 ARG VITE_API_BASE_URL=/api
