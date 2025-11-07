@@ -23,7 +23,12 @@ COPY src ./src
 COPY public ./public
 
 # Verify critical files are present
-RUN ls -la src/lib/ || echo "Warning: src/lib directory not found"
+RUN echo "=== Checking src/lib directory ===" && \
+    ls -la src/lib/ && \
+    echo "=== Checking if api.ts exists ===" && \
+    test -f src/lib/api.ts && echo "✓ api.ts found" || echo "✗ api.ts NOT found" && \
+    echo "=== Listing all files in src/lib ===" && \
+    find src/lib -type f
 
 # Build argument for API URL (use relative path since nginx proxies /api/)
 ARG VITE_API_BASE_URL=/api
