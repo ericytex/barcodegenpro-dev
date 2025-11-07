@@ -602,7 +602,16 @@ class ApiService {
     // Get JWT token from localStorage if available
     const jwtToken = localStorage.getItem('access_token');
     
-    const response = await this.request<BarcodeGenerationResponse>('/api/barcodes/upload-excel', {
+    // Use buildApiUrl to construct the correct URL
+    const url = buildApiUrl('/barcodes/upload-excel');
+    
+    debugLog('Upload Excel URL', {
+      baseUrl: this.baseUrl,
+      endpoint: '/barcodes/upload-excel',
+      finalUrl: url
+    });
+    
+    const response = await fetch(url, {
       method: 'POST',
       headers: {
         'X-API-Key': this.apiKey,
@@ -611,11 +620,17 @@ class ApiService {
       },
       body: formData,
     });
-
-    debugLog('Upload response', response);
-    debugLog('Response type', typeof response);
-    debugLog('Response keys', response ? Object.keys(response) : 'undefined');
-    return response;
+    
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(
+        errorData.detail || errorData.message || `HTTP error! status: ${response.status}`
+      );
+    }
+    
+    const result = await response.json();
+    debugLog('Upload response', result);
+    return result as BarcodeGenerationResponse;
   }
 
   /**
