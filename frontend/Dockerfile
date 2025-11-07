@@ -22,6 +22,9 @@ COPY index.html ./
 COPY src ./src
 COPY public ./public
 
+# Verify critical files are present
+RUN ls -la src/lib/ || echo "Warning: src/lib directory not found"
+
 # Build argument for API URL (use relative path since nginx proxies /api/)
 ARG VITE_API_BASE_URL=/api
 ARG VITE_ENVIRONMENT=production
