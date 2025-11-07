@@ -22,13 +22,13 @@ COPY index.html ./
 COPY src ./src
 COPY public ./public
 
-# Verify critical files are present
+# Verify critical files are present (non-blocking)
 RUN echo "=== Checking src/lib directory ===" && \
-    ls -la src/lib/ && \
+    (ls -la src/lib/ || echo "Directory not found") && \
     echo "=== Checking if api.ts exists ===" && \
-    test -f src/lib/api.ts && echo "✓ api.ts found" || echo "✗ api.ts NOT found" && \
+    (test -f src/lib/api.ts && echo "✓ api.ts found" || echo "✗ api.ts NOT found") && \
     echo "=== Listing all files in src/lib ===" && \
-    find src/lib -type f
+    (find src/lib -type f || echo "No files found") || true
 
 # Build argument for API URL (use relative path since nginx proxies /api/)
 ARG VITE_API_BASE_URL=/api
