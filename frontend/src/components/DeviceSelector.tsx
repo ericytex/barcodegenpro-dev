@@ -46,9 +46,9 @@ export function DeviceSelector({
     setIsLoading(true);
     try {
       // Load templates from backend - these become device types
-      const { getApiConfig } = await import('@/lib/api');
+      const { getApiConfig, buildApiUrl } = await import('@/lib/api');
       const apiConfig = getApiConfig();
-      const response = await fetch(`${apiConfig.baseUrl}/api/templates`, {
+      const response = await fetch(buildApiUrl('/templates'), {
         headers: {
           'X-API-Key': apiConfig.apiKey,
         },

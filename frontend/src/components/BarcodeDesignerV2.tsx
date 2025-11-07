@@ -726,7 +726,9 @@ export default function BarcodeDesignerV2() {
     setLoadingTemplates(true);
     try {
       const apiConfig = getApiConfig();
-      const response = await fetch(`${apiConfig.baseUrl}/api/templates`, {
+      const { buildApiUrl } = await import('@/lib/api');
+      const { buildApiUrl } = await import('@/lib/api');
+      const response = await fetch(buildApiUrl('/templates'), {
         headers: {
           'X-API-Key': apiConfig.apiKey,
         },
@@ -768,8 +770,9 @@ export default function BarcodeDesignerV2() {
     setSelectedTemplateId(templateId);
     try {
       const apiConfig = getApiConfig();
+      const { buildApiUrl } = await import('@/lib/api');
       console.log('Loading template:', templateId);
-      const response = await fetch(`${apiConfig.baseUrl}/api/templates/${templateId}`, {
+      const response = await fetch(buildApiUrl(`/templates/${templateId}`), {
         headers: {
           'X-API-Key': apiConfig.apiKey,
         },
@@ -953,7 +956,9 @@ export default function BarcodeDesignerV2() {
   const loadTemplates = async () => {
     try {
       const apiConfig = getApiConfig();
-      const response = await fetch(`${apiConfig.baseUrl}/api/templates`, {
+      const { buildApiUrl } = await import('@/lib/api');
+      const { buildApiUrl } = await import('@/lib/api');
+      const response = await fetch(buildApiUrl('/templates'), {
         headers: {
           'X-API-Key': 'test-key',
         },
@@ -1084,7 +1089,9 @@ export default function BarcodeDesignerV2() {
       };
 
       const apiConfig = getApiConfig();
-      const response = await fetch(`${apiConfig.baseUrl}/api/templates`, {
+      const { buildApiUrl } = await import('@/lib/api');
+      const { buildApiUrl } = await import('@/lib/api');
+      const response = await fetch(buildApiUrl('/templates'), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -1118,7 +1125,9 @@ export default function BarcodeDesignerV2() {
   const loadTemplatesForEdit = async () => {
     try {
       const apiConfig = getApiConfig();
-      const response = await fetch(`${apiConfig.baseUrl}/api/templates`, {
+      const { buildApiUrl } = await import('@/lib/api');
+      const { buildApiUrl } = await import('@/lib/api');
+      const response = await fetch(buildApiUrl('/templates'), {
         headers: {
           'X-API-Key': 'test-key',
         },
@@ -1255,7 +1264,8 @@ export default function BarcodeDesignerV2() {
       };
 
       const apiConfig = getApiConfig();
-      const response = await fetch(`${apiConfig.baseUrl}/api/templates/${editingTemplateId}`, {
+      const { buildApiUrl } = await import('@/lib/api');
+      const response = await fetch(buildApiUrl(`/templates/${editingTemplateId}`), {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',

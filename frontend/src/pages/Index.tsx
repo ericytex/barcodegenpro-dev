@@ -53,9 +53,9 @@ const Index = () => {
     // Verify files exist before setting results
     try {
       // Get list of available files from API
-      const { getApiConfig } = await import('@/lib/api');
+      const { getApiConfig, buildApiUrl } = await import('@/lib/api');
       const apiConfig = getApiConfig();
-      const listResponse = await fetch(`${apiConfig.baseUrl}/api/barcodes/list`, {
+      const listResponse = await fetch(buildApiUrl('/barcodes/list'), {
         headers: {
           'X-API-Key': apiConfig.apiKey,
         },
