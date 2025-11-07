@@ -19,9 +19,6 @@ COPY postcss.config.js ./
 COPY index.html ./
 
 # Copy source code explicitly to ensure all files are included
-# Copy lib directory first to ensure it exists
-COPY src/lib ./src/lib
-# Then copy the rest of src
 COPY src ./src
 COPY public ./public
 
@@ -37,7 +34,9 @@ RUN echo "=== Verifying file structure ===" && \
     echo "=== Full src/lib file tree ===" && \
     (find src/lib -type f 2>/dev/null || echo "Cannot find files") && \
     echo "=== Checking vite.config.ts ===" && \
-    (test -f vite.config.ts && echo "✓ vite.config.ts exists" || echo "✗ vite.config.ts NOT found") || true
+    (test -f vite.config.ts && echo "✓ vite.config.ts exists" || echo "✗ vite.config.ts NOT found") && \
+    echo "=== Verifying path resolution ===" && \
+    (node -e "const path = require('path'); console.log('Resolved @/lib/api:', path.resolve(__dirname, 'src/lib/api.ts'))" || echo "Node path test failed") || true
 
 # Build argument for API URL (use relative path since nginx proxies /api/)
 ARG VITE_API_BASE_URL=/api

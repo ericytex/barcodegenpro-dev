@@ -1,11 +1,19 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react-swc";
 import path from "path";
+import { fileURLToPath } from "url";
+
+// Get __dirname equivalent for ES modules
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 export default defineConfig(({ mode }) => {
   // Environment-specific configuration
   const isDevelopment = mode === 'development';
   const isProduction = mode === 'production';
+  
+  // Resolve src path absolutely to ensure it works in Docker
+  const srcPath = path.resolve(process.cwd(), "src");
   
   return {
     server: {
@@ -32,7 +40,7 @@ export default defineConfig(({ mode }) => {
     ],
     resolve: {
       alias: {
-        "@": path.resolve(__dirname, "./src"),
+        "@": srcPath,
       },
     },
     define: {
