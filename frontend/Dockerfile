@@ -19,6 +19,9 @@ COPY postcss.config.js ./
 COPY index.html ./
 
 # Copy source code explicitly to ensure all files are included
+# Copy lib directory first to ensure it exists
+COPY src/lib ./src/lib
+# Then copy the rest of src
 COPY src ./src
 COPY public ./public
 
