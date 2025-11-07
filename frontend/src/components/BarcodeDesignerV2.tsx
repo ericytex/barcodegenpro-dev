@@ -727,7 +727,6 @@ export default function BarcodeDesignerV2() {
     try {
       const apiConfig = getApiConfig();
       const { buildApiUrl } = await import('@/lib/api');
-      const { buildApiUrl } = await import('@/lib/api');
       const response = await fetch(buildApiUrl('/templates'), {
         headers: {
           'X-API-Key': apiConfig.apiKey,
@@ -957,7 +956,6 @@ export default function BarcodeDesignerV2() {
     try {
       const apiConfig = getApiConfig();
       const { buildApiUrl } = await import('@/lib/api');
-      const { buildApiUrl } = await import('@/lib/api');
       const response = await fetch(buildApiUrl('/templates'), {
         headers: {
           'X-API-Key': 'test-key',
@@ -1090,7 +1088,6 @@ export default function BarcodeDesignerV2() {
 
       const apiConfig = getApiConfig();
       const { buildApiUrl } = await import('@/lib/api');
-      const { buildApiUrl } = await import('@/lib/api');
       const response = await fetch(buildApiUrl('/templates'), {
         method: 'POST',
         headers: {
@@ -1125,7 +1122,6 @@ export default function BarcodeDesignerV2() {
   const loadTemplatesForEdit = async () => {
     try {
       const apiConfig = getApiConfig();
-      const { buildApiUrl } = await import('@/lib/api');
       const { buildApiUrl } = await import('@/lib/api');
       const response = await fetch(buildApiUrl('/templates'), {
         headers: {
