@@ -273,8 +273,10 @@ class SamsungGalaxyService:
                 raise Exception("No Samsung Galaxy barcodes were generated")
             
             # Copy Samsung Galaxy PNG files to downloads/barcodes/ for PDF creation
-            downloads_barcodes_dir = "downloads/barcodes"
-            os.makedirs(downloads_barcodes_dir, exist_ok=True)
+            # Use environment variable if available, otherwise use default
+            download_base = os.getenv("DOWNLOAD_DIR", "downloads")
+            downloads_barcodes_dir = os.path.join(download_base, "barcodes")
+            os.makedirs(downloads_barcodes_dir, exist_ok=True, mode=0o755)
             
             # Clear existing files first
             existing_files = glob.glob(os.path.join(downloads_barcodes_dir, "*.png"))

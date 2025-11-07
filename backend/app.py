@@ -69,6 +69,29 @@ app = FastAPI(
 # Configure CORS securely
 cors_origins = os.getenv("CORS_ORIGINS", "http://localhost:8034,http://localhost:8080,http://localhost:8081").split(",")
 
+# Helper functions for directory paths (supports both Docker and VPS deployments)
+def get_upload_dir():
+    """Get upload directory path from environment or use default"""
+    return os.getenv("UPLOAD_DIR", "uploads")
+
+def get_download_dir():
+    """Get download directory path from environment or use default"""
+    return os.getenv("DOWNLOAD_DIR", "downloads")
+
+def get_barcodes_dir():
+    """Get barcodes directory path"""
+    download_base = get_download_dir()
+    return os.path.join(download_base, "barcodes")
+
+def get_pdfs_dir():
+    """Get PDFs directory path"""
+    download_base = get_download_dir()
+    return os.path.join(download_base, "pdfs")
+
+def get_logs_dir():
+    """Get logs directory path"""
+    return os.getenv("LOGS_DIR", "logs")
+
 # Add additional Vercel domains dynamically
 additional_origins = [
     "https://barcode-gene-frontend.vercel.app",
@@ -353,9 +376,9 @@ async def startup_event():
         safe_logger.error(f"Failed to initialize payment system: {str(e)}")
     
     # Clean up old files on startup
-    cleanup_old_files("uploads", max_age_hours=24)
-    cleanup_old_files("downloads/barcodes", max_age_hours=24)
-    cleanup_old_files("downloads/pdfs", max_age_hours=24)
+    cleanup_old_files(get_upload_dir(), max_age_hours=24)
+    cleanup_old_files(get_barcodes_dir(), max_age_hours=24)
+    cleanup_old_files(get_pdfs_dir(), max_age_hours=24)
     
     # Start background Collections verification job
     verification_thread = threading.Thread(target=background_collections_verification, daemon=True)
@@ -671,7 +694,7 @@ async def upload_excel_and_generate(
             # Verify files actually exist on disk before returning
             verified_files = []
             for filename in files:
-                file_path = os.path.join("downloads/barcodes", filename)
+                file_path = os.path.join(get_barcodes_dir(), filename)
                 if os.path.exists(file_path):
                     verified_files.append(filename)
                     print(f"✅ Verified file exists: {filename}")
@@ -701,13 +724,25 @@ async def upload_excel_and_generate(
         # Create PDF if requested (before archiving, so files are still available)
         pdf_file = None
         if create_pdf and files:
-            print(f"📄 Creating PDF with {len(files)} generated files...")
-            pdf_file = barcode_service.create_pdf_from_barcodes(
-                grid_cols=pdf_grid_cols,
-                grid_rows=pdf_grid_rows,
-                session_id=session_id
-            )
-            print(f"📄 PDF created: {pdf_file}")
+            try:
+                print(f"📄 Creating PDF with {len(files)} generated files...")
+                # Ensure directories exist before PDF creation
+                os.makedirs(get_barcodes_dir(), exist_ok=True, mode=0o755)
+                os.makedirs(get_pdfs_dir(), exist_ok=True, mode=0o755)
+                
+                pdf_file = barcode_service.create_pdf_from_barcodes(
+                    grid_cols=pdf_grid_cols,
+                    grid_rows=pdf_grid_rows,
+                    session_id=session_id
+                )
+                print(f"📄 PDF created: {pdf_file}")
+            except Exception as pdf_error:
+                print(f"❌ Error creating PDF: {pdf_error}")
+                import traceback
+                print(f"❌ PDF creation traceback: {traceback.format_exc()}")
+                # Don't fail the entire request if PDF creation fails
+                # Continue and return the PNG files
+                pdf_file = None
         
         # Clean up uploaded file
         try:
@@ -740,10 +775,10 @@ async def list_generated_files(
     """List all generated barcode and PDF files"""
     try:
         # List PNG files
-        png_files = list_files_in_directory("downloads/barcodes", [".png"])
+        png_files = list_files_in_directory(get_barcodes_dir(), [".png"])
         
         # List PDF files
-        pdf_files = list_files_in_directory("downloads/pdfs", [".pdf"])
+        pdf_files = list_files_in_directory(get_pdfs_dir(), [".pdf"])
         
         # Combine all files
         all_files = png_files + pdf_files
@@ -767,11 +802,11 @@ async def download_barcode_file(filename: str):
     try:
         # Sanitize filename to prevent path traversal
         safe_filename = security_manager.sanitize_filename(filename)
-        file_path = os.path.join("downloads/barcodes", safe_filename)
+        file_path = os.path.join(get_barcodes_dir(), safe_filename)
         
         # If file not in downloads/barcodes, check archives
         if not os.path.exists(file_path):
-            print(f"🔍 File {safe_filename} not found in downloads/barcodes, checking archives...")
+            print(f"🔍 File {safe_filename} not found in {get_barcodes_dir()}, checking archives...")
             # Search in archives directory (recursive search)
             archive_paths = glob.glob(f"archives/**/{safe_filename}", recursive=True)
             if archive_paths:
@@ -781,7 +816,7 @@ async def download_barcode_file(filename: str):
                 print(f"✅ Found file in archive: {file_path}")
             else:
                 # List what's actually in downloads/barcodes for debugging
-                barcode_dir_files = os.listdir("downloads/barcodes") if os.path.exists("downloads/barcodes") else []
+                barcode_dir_files = os.listdir(get_barcodes_dir()) if os.path.exists(get_barcodes_dir()) else []
                 print(f"❌ File {safe_filename} not found")
                 print(f"📁 Files in downloads/barcodes: {barcode_dir_files[:10]}...")
                 print(f"🔍 Searched archives recursively for: {safe_filename}")
@@ -811,7 +846,7 @@ async def download_pdf_file(filename: str):
     try:
         # Sanitize filename
         safe_filename = get_safe_filename(filename)
-        file_path = os.path.join("downloads/pdfs", safe_filename)
+        file_path = os.path.join(get_pdfs_dir(), safe_filename)
         
         if not os.path.exists(file_path):
             raise HTTPException(
@@ -985,10 +1020,10 @@ async def upload_excel_and_generate_samsung_galaxy_original(
         # Save uploaded file
         timestamp = datetime.now().strftime("%H%M%S")
         filename = f"temp_samsung_galaxy_{timestamp}_{file.filename}"
-        file_path = os.path.join("uploads", filename.replace(' ', '_'))
+        file_path = os.path.join(get_upload_dir(), filename.replace(' ', '_'))
         
         # Ensure uploads directory exists
-        os.makedirs("uploads", exist_ok=True)
+        os.makedirs(get_upload_dir(), exist_ok=True, mode=0o755)
         
         # Write uploaded file
         with open(file_path, "wb") as buffer:
@@ -1246,7 +1281,7 @@ async def upload_excel_and_generate_samsung_galaxy_pdf(
             pdf_filename = f"barcode_collection_{session_id}.pdf"
             
             # For Samsung Galaxy: Force PDF creation even if PNG generation fails
-            downloads_barcodes_dir = "downloads/barcodes"
+            downloads_barcodes_dir = get_barcodes_dir()
             os.makedirs(downloads_barcodes_dir, exist_ok=True)
             
             # Copy any Samsung Galaxy files we can find

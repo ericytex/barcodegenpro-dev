@@ -28,20 +28,40 @@ from models.template import TemplateManager
 
 
 class BarcodeService:
-    def __init__(self, output_dir: str = "downloads/barcodes", pdf_dir: str = "downloads/pdfs", logs_dir: str = "logs"):
-        self.output_dir = output_dir
-        self.pdf_dir = pdf_dir
-        self.logs_dir = logs_dir
+    def __init__(self, output_dir: str = None, pdf_dir: str = None, logs_dir: str = None):
+        # Use environment variables if available, otherwise use defaults
+        # This ensures compatibility with both Docker (/app/...) and VPS deployments
+        download_base = os.getenv("DOWNLOAD_DIR", "downloads")
+        logs_base = os.getenv("LOGS_DIR", "logs")
+        
+        self.output_dir = output_dir or os.path.join(download_base, "barcodes")
+        self.pdf_dir = pdf_dir or os.path.join(download_base, "pdfs")
+        self.logs_dir = logs_dir or logs_base
         self.imei_log_file = os.path.join(self.logs_dir, "imei_log.csv")
         self.archive_manager = ArchiveManager()
         self.node_barcode_service = NodeBarcodeService()
         self.create_output_directories()
         
     def create_output_directories(self):
-        """Create output directories if they don't exist"""
+        """Create output directories if they don't exist with proper permissions"""
         for directory in [self.output_dir, self.pdf_dir, self.logs_dir]:
-            if not os.path.exists(directory):
-                os.makedirs(directory, exist_ok=True)
+            try:
+                if not os.path.exists(directory):
+                    os.makedirs(directory, exist_ok=True, mode=0o755)
+                    print(f"✅ Created directory: {directory}")
+                else:
+                    # Ensure directory is writable
+                    if not os.access(directory, os.W_OK):
+                        print(f"⚠️  Warning: Directory exists but is not writable: {directory}")
+                        try:
+                            os.chmod(directory, 0o755)
+                            print(f"✅ Fixed permissions for directory: {directory}")
+                        except Exception as e:
+                            print(f"❌ Could not fix permissions for {directory}: {e}")
+            except Exception as e:
+                print(f"❌ Error creating directory {directory}: {e}")
+                import traceback
+                print(traceback.format_exc())
 
     def archive_existing_files(self, file_metadata: List[Dict[str, Any]] = None) -> Dict[str, Any]:
         """Archive existing files to timestamped folders instead of deleting them"""
@@ -945,8 +965,31 @@ class BarcodeService:
         
         pdf_path = os.path.join(self.pdf_dir, pdf_filename)
         
-        # Ensure PDF directory exists
-        os.makedirs(self.pdf_dir, exist_ok=True)
+        # Ensure PDF directory exists with proper permissions
+        try:
+            os.makedirs(self.pdf_dir, exist_ok=True, mode=0o755)
+            # Verify directory is writable
+            if not os.access(self.pdf_dir, os.W_OK):
+                print(f"⚠️  Warning: PDF directory is not writable: {self.pdf_dir}")
+                try:
+                    os.chmod(self.pdf_dir, 0o755)
+                except Exception as e:
+                    print(f"❌ Could not fix PDF directory permissions: {e}")
+        except Exception as e:
+            print(f"❌ Error creating PDF directory {self.pdf_dir}: {e}")
+            import traceback
+            print(traceback.format_exc())
+            raise
+        
+        # Ensure output directory exists
+        if not os.path.exists(self.output_dir):
+            print(f"⚠️  Warning: Output directory does not exist: {self.output_dir}")
+            try:
+                os.makedirs(self.output_dir, exist_ok=True, mode=0o755)
+                print(f"✅ Created output directory: {self.output_dir}")
+            except Exception as e:
+                print(f"❌ Error creating output directory: {e}")
+                raise
         
         # Get all PNG files from the barcode directory
         barcode_files = glob.glob(os.path.join(self.output_dir, "*.png"))
@@ -1043,9 +1086,35 @@ class BarcodeService:
         print(f"📄 Total pages: {total_pages}")
         print(f"📐 Grid layout: {grid_cols} columns × {grid_rows} rows")
         
-        # Keep PNG files available for preview - they will be archived on next generation
-        # This allows users to preview individual barcodes even after PDF creation
-        print(f"📦 Keeping {len(barcode_files)} PNG files available for preview (will be archived on next generation)")
+        # Clean up PNG files immediately after PDF creation to prevent duplication
+        try:
+            # Ensure output directory exists before cleanup
+            if not os.path.exists(self.output_dir):
+                print(f"⚠️  Warning: Output directory does not exist: {self.output_dir}")
+                os.makedirs(self.output_dir, exist_ok=True, mode=0o755)
+            
+            png_files = glob.glob(os.path.join(self.output_dir, "*.png"))
+            if png_files:
+                print(f"🧹 Cleaning up {len(png_files)} PNG files after PDF creation...")
+                cleaned_count = 0
+                for png_file in png_files:
+                    try:
+                        if os.path.exists(png_file) and os.access(png_file, os.W_OK):
+                            os.remove(png_file)
+                            cleaned_count += 1
+                            print(f"🧹 Cleaned up PNG file: {os.path.basename(png_file)}")
+                        else:
+                            print(f"⚠️  Warning: Cannot remove PNG file (missing or no write permission): {os.path.basename(png_file)}")
+                    except Exception as e:
+                        print(f"⚠️  Warning: Could not remove PNG file {os.path.basename(png_file)}: {e}")
+                print(f"✅ Cleaned up {cleaned_count}/{len(png_files)} PNG files after PDF creation")
+            else:
+                print(f"ℹ️  No PNG files to clean up in {self.output_dir}")
+        except Exception as e:
+            print(f"⚠️  Warning: Error during PNG cleanup: {e}")
+            import traceback
+            print(f"⚠️  Cleanup traceback: {traceback.format_exc()}")
+            # Don't fail PDF creation if cleanup fails
         
         return pdf_filename
 

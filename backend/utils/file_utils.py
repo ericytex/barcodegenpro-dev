@@ -9,10 +9,20 @@ from datetime import datetime
 import mimetypes
 
 
-async def save_uploaded_file(file_content: bytes, filename: str, upload_dir: str = "uploads") -> str:
+async def save_uploaded_file(file_content: bytes, filename: str, upload_dir: str = None) -> str:
     """Save uploaded file to the uploads directory"""
-    # Create upload directory if it doesn't exist
-    os.makedirs(upload_dir, exist_ok=True)
+    # Use environment variable if available, otherwise use default
+    if upload_dir is None:
+        upload_dir = os.getenv("UPLOAD_DIR", "uploads")
+    
+    # Create upload directory if it doesn't exist with proper permissions
+    try:
+        os.makedirs(upload_dir, exist_ok=True, mode=0o755)
+        # Verify directory is writable
+        if not os.access(upload_dir, os.W_OK):
+            os.chmod(upload_dir, 0o755)
+    except Exception as e:
+        print(f"⚠️  Warning: Could not ensure upload directory permissions: {e}")
     
     # Generate unique filename with timestamp
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
