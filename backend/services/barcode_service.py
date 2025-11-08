@@ -10,6 +10,7 @@ from barcode import Code128
 from barcode.writer import ImageWriter
 import io
 import os
+import shutil
 from datetime import datetime
 from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import A4
@@ -100,7 +101,9 @@ class BarcodeService:
                 try:
                     filename = os.path.basename(png_file)
                     archive_path = os.path.join(archive_dir, filename)
-                    os.rename(png_file, archive_path)
+                    # Use shutil.move() instead of os.rename() to handle cross-device moves
+                    # This works when source and destination are on different filesystems (e.g., Docker volumes)
+                    shutil.move(png_file, archive_path)
                     archived_files.append(filename)
                     total_size += os.path.getsize(archive_path)
                     print(f"📦 Archived: {filename}")
@@ -112,7 +115,9 @@ class BarcodeService:
                 try:
                     filename = os.path.basename(pdf_file)
                     archive_path = os.path.join(archive_dir, filename)
-                    os.rename(pdf_file, archive_path)
+                    # Use shutil.move() instead of os.rename() to handle cross-device moves
+                    # This works when source and destination are on different filesystems (e.g., Docker volumes)
+                    shutil.move(pdf_file, archive_path)
                     archived_files.append(filename)
                     total_size += os.path.getsize(archive_path)
                     print(f"📦 Archived: {filename}")
@@ -953,21 +958,21 @@ class BarcodeService:
                                grid_cols: int = 5, grid_rows: int = 12, # Dashboard default 5x12
                                session_id: str = None) -> Optional[str]:
         """Create a PDF with all generated barcode images arranged in a grid"""
-        
-        # Set default PDF filename if not provided
-        if pdf_filename is None:
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            pdf_filename = f"barcode_collection_{timestamp}.pdf"
-        
-        # Use provided session_id or create a default one
-        if session_id is None:
-            session_id = f"session_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
-        
-        pdf_path = os.path.join(self.pdf_dir, pdf_filename)
-        
-        # Ensure PDF directory exists with proper permissions
         try:
-            os.makedirs(self.pdf_dir, exist_ok=True, mode=0o755)
+            # Set default PDF filename if not provided
+            if pdf_filename is None:
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                pdf_filename = f"barcode_collection_{timestamp}.pdf"
+            
+            # Use provided session_id or create a default one
+            if session_id is None:
+                session_id = f"session_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+            
+            pdf_path = os.path.join(self.pdf_dir, pdf_filename)
+            
+            # Ensure PDF directory exists with proper permissions
+            try:
+                os.makedirs(self.pdf_dir, exist_ok=True, mode=0o755)
             # Verify directory is writable
             if not os.access(self.pdf_dir, os.W_OK):
                 print(f"⚠️  Warning: PDF directory is not writable: {self.pdf_dir}")
@@ -975,148 +980,183 @@ class BarcodeService:
                     os.chmod(self.pdf_dir, 0o755)
                 except Exception as e:
                     print(f"❌ Could not fix PDF directory permissions: {e}")
-        except Exception as e:
-            print(f"❌ Error creating PDF directory {self.pdf_dir}: {e}")
-            import traceback
-            print(traceback.format_exc())
-            raise
-        
-        # Ensure output directory exists
-        if not os.path.exists(self.output_dir):
-            print(f"⚠️  Warning: Output directory does not exist: {self.output_dir}")
-            try:
-                os.makedirs(self.output_dir, exist_ok=True, mode=0o755)
-                print(f"✅ Created output directory: {self.output_dir}")
             except Exception as e:
-                print(f"❌ Error creating output directory: {e}")
+                print(f"❌ Error creating PDF directory {self.pdf_dir}: {e}")
+                import traceback
+                print(traceback.format_exc())
                 raise
-        
-        # Get all PNG files from the barcode directory
-        barcode_files = glob.glob(os.path.join(self.output_dir, "*.png"))
-        barcode_files.sort()  # Sort for consistent ordering
-        
-        print(f"🔍 Looking for PNG files in: {self.output_dir}")
-        print(f"🔍 Found {len(barcode_files)} PNG files: {barcode_files}")
-        
-        if not barcode_files:
-            print("❌ No barcode images found to include in PDF")
-            return None
-        
-        print(f"📄 Creating PDF with {len(barcode_files)} barcode images...")
-        print(f"📁 PDF will be saved as: {pdf_path}")
-        
-        # Create PDF canvas
-        c = canvas.Canvas(pdf_path, pagesize=A4)
-        page_width, page_height = A4
-        
-        # Calculate grid dimensions
-        margin = 20  # Margin from page edges
-        available_width = page_width - (2 * margin)
-        available_height = page_height - (2 * margin)
-        
-        # Calculate cell dimensions
-        cell_width = available_width / grid_cols
-        cell_height = available_height / grid_rows
-        
-        # Calculate image size (leave some padding in each cell)
-        image_padding = 2
-        image_width = cell_width - (2 * image_padding)
-        image_height = cell_height - (2 * image_padding)
-        
-        # Process images in batches of grid_cols * grid_rows
-        images_per_page = grid_cols * grid_rows
-        total_pages = (len(barcode_files) + images_per_page - 1) // images_per_page
-        
-        for page_num in range(total_pages):
-            if page_num > 0:
-                c.showPage()  # Start new page
             
-            # Calculate which images to include on this page
-            start_idx = page_num * images_per_page
-            end_idx = min(start_idx + images_per_page, len(barcode_files))
-            page_images = barcode_files[start_idx:end_idx]
-            
-            print(f"📄 Processing page {page_num + 1}/{total_pages} ({len(page_images)} images)")
-            
-            # Place images in grid
-            for i, image_path in enumerate(page_images):
-                # Calculate grid position
-                row = i // grid_cols
-                col = i % grid_cols
-                
-                # Calculate position on page
-                x = margin + (col * cell_width) + image_padding
-                y = page_height - margin - ((row + 1) * cell_height) + image_padding
-                
-                try:
-                    # Add image to PDF
-                    c.drawImage(ImageReader(image_path), x, y, 
-                              width=image_width, height=image_height, 
-                              preserveAspectRatio=True, anchor='sw')
-                except Exception as e:
-                    print(f"⚠️  Warning: Could not add image {os.path.basename(image_path)}: {e}")
-        
-        # Save the PDF
-        c.save()
-        
-        # Save PDF details immediately to database
-        pdf_file_size = os.path.getsize(pdf_path)
-        pdf_record = BarcodeRecord(
-            filename=pdf_filename,
-            file_path=pdf_path,
-            archive_path=pdf_path,  # Will be updated when archived
-            file_type="pdf",
-            file_size=pdf_file_size,
-            created_at=datetime.now().isoformat(),
-            archived_at=datetime.now().isoformat(),
-            generation_session=session_id,
-            imei=None,  # PDFs don't have individual IMEI
-            box_id=None,
-            model=None,
-            product=f"Collection of {len(barcode_files)} barcodes",
-            color=None,
-            dn=None
-        )
-        
-        pdf_record_id = self.archive_manager.db_manager.insert_barcode_record(pdf_record)
-        print(f"✅ Saved PDF {pdf_filename} to database (ID: {pdf_record_id})")
-        
-        print(f"✅ PDF created successfully: {pdf_path}")
-        print(f"📊 Total images included: {len(barcode_files)}")
-        print(f"📄 Total pages: {total_pages}")
-        print(f"📐 Grid layout: {grid_cols} columns × {grid_rows} rows")
-        
-        # Clean up PNG files immediately after PDF creation to prevent duplication
-        try:
-            # Ensure output directory exists before cleanup
+            # Ensure output directory exists
             if not os.path.exists(self.output_dir):
                 print(f"⚠️  Warning: Output directory does not exist: {self.output_dir}")
-                os.makedirs(self.output_dir, exist_ok=True, mode=0o755)
+                try:
+                    os.makedirs(self.output_dir, exist_ok=True, mode=0o755)
+                    print(f"✅ Created output directory: {self.output_dir}")
+                except Exception as e:
+                    print(f"❌ Error creating output directory: {e}")
+                    raise
             
-            png_files = glob.glob(os.path.join(self.output_dir, "*.png"))
-            if png_files:
-                print(f"🧹 Cleaning up {len(png_files)} PNG files after PDF creation...")
-                cleaned_count = 0
-                for png_file in png_files:
+            # Get all PNG files from the barcode directory
+            barcode_files = glob.glob(os.path.join(self.output_dir, "*.png"))
+            barcode_files.sort()  # Sort for consistent ordering
+            
+            print(f"🔍 Looking for PNG files in: {self.output_dir}")
+            print(f"🔍 Found {len(barcode_files)} PNG files: {barcode_files}")
+            
+            if not barcode_files:
+                print("❌ No barcode images found to include in PDF")
+                return None
+            
+            print(f"📄 Creating PDF with {len(barcode_files)} barcode images...")
+            print(f"📁 PDF will be saved as: {pdf_path}")
+            
+            # Create PDF canvas
+            c = canvas.Canvas(pdf_path, pagesize=A4)
+            page_width, page_height = A4
+            
+            # Calculate grid dimensions
+            margin = 20  # Margin from page edges
+            available_width = page_width - (2 * margin)
+            available_height = page_height - (2 * margin)
+            
+            # Calculate cell dimensions
+            cell_width = available_width / grid_cols
+            cell_height = available_height / grid_rows
+            
+            # Calculate image size (leave some padding in each cell)
+            image_padding = 2
+            image_width = cell_width - (2 * image_padding)
+            image_height = cell_height - (2 * image_padding)
+            
+            # Process images in batches of grid_cols * grid_rows
+            images_per_page = grid_cols * grid_rows
+            total_pages = (len(barcode_files) + images_per_page - 1) // images_per_page
+            
+            for page_num in range(total_pages):
+                if page_num > 0:
+                    c.showPage()  # Start new page
+                
+                # Calculate which images to include on this page
+                start_idx = page_num * images_per_page
+                end_idx = min(start_idx + images_per_page, len(barcode_files))
+                page_images = barcode_files[start_idx:end_idx]
+                
+                print(f"📄 Processing page {page_num + 1}/{total_pages} ({len(page_images)} images)")
+                
+                # Place images in grid
+                for i, image_path in enumerate(page_images):
+                    # Calculate grid position
+                    row = i // grid_cols
+                    col = i % grid_cols
+                    
+                    # Calculate position on page
+                    x = margin + (col * cell_width) + image_padding
+                    y = page_height - margin - ((row + 1) * cell_height) + image_padding
+                    
                     try:
-                        if os.path.exists(png_file) and os.access(png_file, os.W_OK):
-                            os.remove(png_file)
-                            cleaned_count += 1
-                            print(f"🧹 Cleaned up PNG file: {os.path.basename(png_file)}")
-                        else:
-                            print(f"⚠️  Warning: Cannot remove PNG file (missing or no write permission): {os.path.basename(png_file)}")
+                        # Add image to PDF
+                        c.drawImage(ImageReader(image_path), x, y, 
+                                  width=image_width, height=image_height, 
+                                  preserveAspectRatio=True, anchor='sw')
                     except Exception as e:
-                        print(f"⚠️  Warning: Could not remove PNG file {os.path.basename(png_file)}: {e}")
-                print(f"✅ Cleaned up {cleaned_count}/{len(png_files)} PNG files after PDF creation")
-            else:
-                print(f"ℹ️  No PNG files to clean up in {self.output_dir}")
-        except Exception as e:
-            print(f"⚠️  Warning: Error during PNG cleanup: {e}")
-            import traceback
-            print(f"⚠️  Cleanup traceback: {traceback.format_exc()}")
-            # Don't fail PDF creation if cleanup fails
+                        print(f"⚠️  Warning: Could not add image {os.path.basename(image_path)}: {e}")
+            
+            # Save the PDF
+            try:
+                c.save()
+                print(f"✅ PDF file saved to disk: {pdf_path}")
+            except Exception as save_error:
+                print(f"❌ Error saving PDF file: {save_error}")
+                import traceback
+                print(f"❌ PDF save traceback: {traceback.format_exc()}")
+                # Clean up partial PDF file if it exists
+                if os.path.exists(pdf_path):
+                    try:
+                        os.remove(pdf_path)
+                    except:
+                        pass
+                raise  # Re-raise since PDF save failure is critical
+            
+            # Verify PDF was created and get file size
+            if not os.path.exists(pdf_path):
+                print(f"❌ Error: PDF file was not created at {pdf_path}")
+                raise FileNotFoundError(f"PDF file not found after save: {pdf_path}")
+            
+            # Save PDF details immediately to database
+            pdf_file_size = os.path.getsize(pdf_path)
+            pdf_record = BarcodeRecord(
+                filename=pdf_filename,
+                file_path=pdf_path,
+                archive_path=pdf_path,  # Will be updated when archived
+                file_type="pdf",
+                file_size=pdf_file_size,
+                created_at=datetime.now().isoformat(),
+                archived_at=datetime.now().isoformat(),
+                generation_session=session_id,
+                imei=None,  # PDFs don't have individual IMEI
+                box_id=None,
+                model=None,
+                product=f"Collection of {len(barcode_files)} barcodes",
+                color=None,
+                dn=None
+            )
+            
+            # Save PDF to database (non-fatal - don't crash if this fails)
+            try:
+                pdf_record_id = self.archive_manager.db_manager.insert_barcode_record(pdf_record)
+                print(f"✅ Saved PDF {pdf_filename} to database (ID: {pdf_record_id})")
+            except Exception as db_error:
+                print(f"⚠️  Warning: Could not save PDF to database: {db_error}")
+                print(f"⚠️  Error type: {type(db_error).__name__}")
+                import traceback
+                print(f"⚠️  Database save traceback: {traceback.format_exc()}")
+                # Don't fail PDF creation if database save fails
+                pdf_record_id = None
+            
+            print(f"✅ PDF created successfully: {pdf_path}")
+            print(f"📊 Total images included: {len(barcode_files)}")
+            print(f"📄 Total pages: {total_pages}")
+            print(f"📐 Grid layout: {grid_cols} columns × {grid_rows} rows")
+            
+            # Clean up PNG files immediately after PDF creation to prevent duplication
+            try:
+                # Ensure output directory exists before cleanup
+                if not os.path.exists(self.output_dir):
+                    print(f"⚠️  Warning: Output directory does not exist: {self.output_dir}")
+                    os.makedirs(self.output_dir, exist_ok=True, mode=0o755)
+                
+                png_files = glob.glob(os.path.join(self.output_dir, "*.png"))
+                if png_files:
+                    print(f"🧹 Cleaning up {len(png_files)} PNG files after PDF creation...")
+                    cleaned_count = 0
+                    for png_file in png_files:
+                        try:
+                            if os.path.exists(png_file) and os.access(png_file, os.W_OK):
+                                os.remove(png_file)
+                                cleaned_count += 1
+                                print(f"🧹 Cleaned up PNG file: {os.path.basename(png_file)}")
+                            else:
+                                print(f"⚠️  Warning: Cannot remove PNG file (missing or no write permission): {os.path.basename(png_file)}")
+                        except Exception as e:
+                            print(f"⚠️  Warning: Could not remove PNG file {os.path.basename(png_file)}: {e}")
+                    print(f"✅ Cleaned up {cleaned_count}/{len(png_files)} PNG files after PDF creation")
+                else:
+                    print(f"ℹ️  No PNG files to clean up in {self.output_dir}")
+            except Exception as e:
+                print(f"⚠️  Warning: Error during PNG cleanup: {e}")
+                import traceback
+                print(f"⚠️  Cleanup traceback: {traceback.format_exc()}")
+                # Don't fail PDF creation if cleanup fails
+            
+            return pdf_filename
         
-        return pdf_filename
+        except Exception as e:
+            print(f"❌ CRITICAL ERROR in create_pdf_from_barcodes: {e}")
+            import traceback
+            print(f"❌ Full traceback: {traceback.format_exc()}")
+            # Log the error but don't crash the worker - return None instead
+            print(f"⚠️  PDF creation failed, returning None to allow request to continue")
+            return None
 
     # Enhanced Device-Specific Barcode Generation
     async def generate_enhanced_barcodes(self, items: List[Any], device_type: Optional[str] = None, device_id: Optional[int] = None, auto_generate_second_imei: bool = True) -> Dict[str, Any]:
