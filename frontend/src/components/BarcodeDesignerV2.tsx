@@ -1145,7 +1145,8 @@ export default function BarcodeDesignerV2() {
   const loadTemplateForEdit = async (templateId: string) => {
     try {
       const apiConfig = getApiConfig();
-      const response = await fetch(`${apiConfig.baseUrl}/api/templates/${templateId}`, {
+      const { buildApiUrl } = await import('@/lib/api');
+      const response = await fetch(buildApiUrl(`/templates/${templateId}`), {
         headers: {
           'X-API-Key': 'test-key',
         },

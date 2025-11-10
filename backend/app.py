@@ -562,7 +562,10 @@ async def upload_excel_and_generate(
     current_user: dict = Depends(get_current_user)
 ):
     """Upload Excel file and generate barcodes (requires tokens)"""
-    print(f"🔍 REQUEST DEBUG: Received upload request")
+    import sys
+    print(f"🔍 REQUEST DEBUG: Received upload request", flush=True)
+    sys.stdout.flush()
+    sys.stderr.flush()
     print(f"🔍 REQUEST DEBUG: template_id parameter = '{template_id}' (type: {type(template_id)})")
     print(f"🔍 REQUEST DEBUG: device_type parameter = '{device_type}' (type: {type(device_type)})")
     print(f"🔍 REQUEST DEBUG: device_id parameter = '{device_id}' (type: {type(device_id)})")
@@ -664,11 +667,27 @@ async def upload_excel_and_generate(
             
             if template_id:
                 print(f"✅ TEMPLATE ROUTE: Using template-based generation with template_id: '{template_id}'")
-                generated_files = await barcode_service.generate_barcodes_from_template_and_excel(
-                    template_id=template_id,
-                    excel_file_path=file_path
-                )
-                print(f"✅ TEMPLATE ROUTE: Template generation completed, returned {len(generated_files) if isinstance(generated_files, tuple) else len(generated_files)} files")
+                try:
+                    result = await barcode_service.generate_barcodes_from_template_and_excel(
+                        template_id=template_id,
+                        excel_file_path=file_path
+                    )
+                    print(f"✅ TEMPLATE ROUTE: Template generation completed, result type: {type(result)}")
+                    if isinstance(result, tuple):
+                        generated_files, session_id_from_result = result
+                        print(f"✅ TEMPLATE ROUTE: Got tuple: {len(generated_files)} files, session_id: {session_id_from_result}")
+                    else:
+                        generated_files = result
+                        session_id_from_result = None
+                        print(f"✅ TEMPLATE ROUTE: Got single value: {len(generated_files) if isinstance(generated_files, list) else 'not a list'}")
+                except Exception as template_error:
+                    print(f"❌ TEMPLATE ROUTE ERROR: Template generation failed: {template_error}")
+                    import traceback
+                    print(f"❌ TEMPLATE ROUTE ERROR: Traceback: {traceback.format_exc()}")
+                    raise HTTPException(
+                        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                        detail=f"Template-based generation failed: {str(template_error)}"
+                    )
             else:
                 print(f"⚠️ TEMPLATE ROUTE: No template_id provided, falling back to standard generation")
                 print(f"⚠️ TEMPLATE ROUTE: This means template-based rendering will NOT be used!")
@@ -681,7 +700,10 @@ async def upload_excel_and_generate(
                 print(f"⚠️ TEMPLATE ROUTE: Standard generation completed")
             
             # Extract files and session_id from the response
-            if isinstance(generated_files, tuple):
+            if template_id and 'session_id_from_result' in locals() and session_id_from_result:
+                session_id = session_id_from_result
+                files = generated_files
+            elif isinstance(generated_files, tuple):
                 files, session_id = generated_files
             else:
                 files = generated_files
@@ -761,9 +783,17 @@ async def upload_excel_and_generate(
     except HTTPException:
         raise
     except Exception as e:
+        import sys
+        import traceback
+        error_msg = f"Error processing Excel file: {str(e)}"
+        print(f"❌ CRITICAL ERROR in upload_excel_and_generate: {error_msg}", flush=True)
+        print(f"❌ Full traceback:", flush=True)
+        traceback.print_exc()
+        sys.stdout.flush()
+        sys.stderr.flush()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error processing Excel file: {str(e)}"
+            detail=error_msg
         )
 
 # List all generated files
@@ -1314,19 +1344,9 @@ async def upload_excel_and_generate_samsung_galaxy_pdf(
                     grid_rows=12
                 )
                 
-                # Clean up PNG files immediately after PDF creation to prevent duplication
-                try:
-                    png_files = glob.glob(os.path.join(downloads_barcodes_dir, "*.png"))
-                    for png_file in png_files:
-                        try:
-                            os.remove(png_file)
-                            safe_logger.info(f"🧹 Cleaned up PNG file: {os.path.basename(png_file)}")
-                        except Exception as e:
-                            safe_logger.warning(f"⚠️  Could not remove PNG file {os.path.basename(png_file)}: {e}")
-                    if png_files:
-                        safe_logger.info(f"✅ Cleaned up {len(png_files)} PNG files after PDF creation")
-                except Exception as e:
-                    safe_logger.warning(f"⚠️  Error during PNG cleanup: {e}")
+                # NOTE: PNG files are NOT cleaned up here. They will be archived when a new session starts.
+                # This ensures files are available for verification and download until the next upload.
+                # Cleanup happens in archive_existing_files() which is called at the start of new sessions.
                 
                 pdf_url = f"/barcodes/download-pdf/{os.path.basename(pdf_path)}" if pdf_path else "/barcodes/download-pdf/default.pdf"
                 

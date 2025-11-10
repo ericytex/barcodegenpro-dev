@@ -37,11 +37,11 @@ export class TemplateManager {
   // Fetch templates from backend API
   static async fetchTemplatesFromBackend(): Promise<BarcodeTemplate[]> {
     try {
-      // Import getApiConfig function
-      const { getApiConfig } = await import('@/lib/api');
-      const { baseUrl, apiKey } = getApiConfig();
+      // Import getApiConfig and buildApiUrl functions
+      const { getApiConfig, buildApiUrl } = await import('@/lib/api');
+      const { apiKey } = getApiConfig();
       
-      const response = await fetch(`${baseUrl}/templates`, {
+      const response = await fetch(buildApiUrl('/templates'), {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',

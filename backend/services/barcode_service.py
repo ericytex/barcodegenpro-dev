@@ -904,37 +904,87 @@ class BarcodeService:
             
             generated_files = []
             
+            # Log initial setup once
+            print(f"🎨 TEMPLATE SERVICE: Output dir: {self.output_dir}")
+            print(f"🎨 TEMPLATE SERVICE: Output dir exists: {os.path.exists(self.output_dir)}")
+            if not os.path.exists(self.output_dir):
+                os.makedirs(self.output_dir, exist_ok=True, mode=0o755)
+            
+            # Progress tracking
+            progress_interval = max(1, len(items) // 10)  # Log every 10% or at least every item if < 10 items
+            
             for index, item in enumerate(items):
                 try:
                     # Create barcode image using template
                     filename = f"barcode_{session_id}_{index + 1:04d}.png"
                     output_path = os.path.join(self.output_dir, filename)
                     
-                    print(f"🎨 TEMPLATE SERVICE: Generating barcode {index + 1}/{len(items)}")
-                    print(f"🎨 TEMPLATE SERVICE: Output path: {output_path}")
-                    print(f"🎨 TEMPLATE SERVICE: Item data keys: {list(item.keys())}")
-                    if 'IMEI/SN' in item:
-                        print(f"🎨 TEMPLATE SERVICE: Item IMEI/SN value: '{item.get('IMEI/SN', 'N/A')}'")
+                    # Log progress at intervals or for first/last item
+                    should_log = (index == 0 or index == len(items) - 1 or 
+                                 (index + 1) % progress_interval == 0 or 
+                                 (index + 1) % 10 == 0)
                     
-                    await self._create_barcode_with_json_template(template, item, output_path)
+                    if should_log:
+                        print(f"🎨 TEMPLATE SERVICE: Generating barcode {index + 1}/{len(items)} ({(index + 1) * 100 // len(items)}%)")
+                    
+                    # Wrap in try-except to prevent worker crash
+                    try:
+                        await self._create_barcode_with_json_template(template, item, output_path)
+                    except Exception as render_error:
+                        import sys
+                        import traceback
+                        error_msg = f"CRITICAL: Worker crash prevented - Error in _create_barcode_with_json_template for item {index + 1}: {render_error}"
+                        traceback_str = traceback.format_exc()
+                        print(f"❌ {error_msg}", flush=True)
+                        print(f"❌ Full traceback: {traceback_str}", flush=True)
+                        sys.stderr.write(f"❌ {error_msg}\n")
+                        sys.stderr.write(f"❌ Full traceback: {traceback_str}\n")
+                        sys.stderr.flush()
+                        sys.stdout.flush()
+                        # Re-raise to be caught by outer exception handler
+                        raise
                     
                     # Verify file was created
                     if os.path.exists(output_path):
                         file_size = os.path.getsize(output_path)
-                        # Return just the filename, not the full path (to match other generation methods)
                         generated_files.append(filename)
-                        print(f"✅ TEMPLATE SERVICE: Generated barcode {index + 1}/{len(items)}: {filename} ({file_size} bytes) at {output_path}")
+                        if should_log:
+                            print(f"✅ TEMPLATE SERVICE: Generated barcode {index + 1}/{len(items)}: {filename} ({file_size} bytes)")
                     else:
-                        print(f"❌ TEMPLATE SERVICE ERROR: File was not created: {output_path}")
+                        # Try absolute path
+                        abs_path = os.path.abspath(output_path)
+                        if os.path.exists(abs_path):
+                            if should_log:
+                                print(f"⚠️ TEMPLATE SERVICE: File found at absolute path: {abs_path}")
+                            generated_files.append(filename)
+                        else:
+                            print(f"❌ TEMPLATE SERVICE ERROR: File was not created: {output_path}")
+                            print(f"❌ TEMPLATE SERVICE ERROR: Absolute path also not found: {abs_path}")
+                            # List directory contents for debugging only on error
+                            if os.path.exists(self.output_dir):
+                                dir_contents = os.listdir(self.output_dir)
+                                print(f"❌ TEMPLATE SERVICE ERROR: Directory contents ({len(dir_contents)} files): {dir_contents[:10]}")
                     
                 except Exception as e:
-                    print(f"❌ TEMPLATE SERVICE ERROR: Error generating barcode for item {index + 1}: {e}")
+                    import sys
                     import traceback
-                    print(f"❌ TEMPLATE SERVICE ERROR: Traceback: {traceback.format_exc()}")
+                    error_msg = f"Error generating barcode for item {index + 1}: {e}"
+                    traceback_str = traceback.format_exc()
+                    print(f"❌ TEMPLATE SERVICE ERROR: {error_msg}", flush=True)
+                    print(f"❌ TEMPLATE SERVICE ERROR: Traceback: {traceback_str}", flush=True)
+                    sys.stderr.write(f"❌ TEMPLATE SERVICE ERROR: {error_msg}\n")
+                    sys.stderr.write(f"❌ TEMPLATE SERVICE ERROR: Traceback: {traceback_str}\n")
+                    sys.stderr.flush()
+                    sys.stdout.flush()
+                    # Continue processing other items even if one fails
+                    # Don't re-raise to prevent worker crash
             
             # Create PDF
+            print(f"🎨 TEMPLATE SERVICE: All {len(generated_files)} barcodes generated successfully!")
             print(f"🎨 TEMPLATE SERVICE: Creating PDF from {len(generated_files)} generated files")
+            print(f"🎨 TEMPLATE SERVICE: Session ID for PDF: {session_id}")
             pdf_filename = f"barcode_collection_{session_id}.pdf"
+            print(f"🎨 TEMPLATE SERVICE: PDF filename will be: {pdf_filename}")
             pdf_path = self.create_pdf_from_barcodes(pdf_filename, session_id=session_id)
             
             if pdf_path:
@@ -949,9 +999,16 @@ class BarcodeService:
             return generated_files, session_id
             
         except Exception as e:
-            print(f"❌ TEMPLATE SERVICE ERROR: Error in template-based generation: {e}")
+            import sys
             import traceback
-            print(f"❌ TEMPLATE SERVICE ERROR: Full traceback: {traceback.format_exc()}")
+            error_msg = f"Error in template-based generation: {e}"
+            traceback_str = traceback.format_exc()
+            print(f"❌ TEMPLATE SERVICE ERROR: {error_msg}", flush=True)
+            print(f"❌ TEMPLATE SERVICE ERROR: Full traceback: {traceback_str}", flush=True)
+            sys.stderr.write(f"❌ TEMPLATE SERVICE ERROR: {error_msg}\n")
+            sys.stderr.write(f"❌ TEMPLATE SERVICE ERROR: Full traceback: {traceback_str}\n")
+            sys.stderr.flush()
+            sys.stdout.flush()
             return [], f"error_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
     
     def create_pdf_from_barcodes(self, pdf_filename: Optional[str] = None, 
@@ -973,13 +1030,13 @@ class BarcodeService:
             # Ensure PDF directory exists with proper permissions
             try:
                 os.makedirs(self.pdf_dir, exist_ok=True, mode=0o755)
-            # Verify directory is writable
-            if not os.access(self.pdf_dir, os.W_OK):
-                print(f"⚠️  Warning: PDF directory is not writable: {self.pdf_dir}")
-                try:
-                    os.chmod(self.pdf_dir, 0o755)
-                except Exception as e:
-                    print(f"❌ Could not fix PDF directory permissions: {e}")
+                # Verify directory is writable
+                if not os.access(self.pdf_dir, os.W_OK):
+                    print(f"⚠️  Warning: PDF directory is not writable: {self.pdf_dir}")
+                    try:
+                        os.chmod(self.pdf_dir, 0o755)
+                    except Exception as e:
+                        print(f"❌ Could not fix PDF directory permissions: {e}")
             except Exception as e:
                 print(f"❌ Error creating PDF directory {self.pdf_dir}: {e}")
                 import traceback
@@ -996,12 +1053,56 @@ class BarcodeService:
                     print(f"❌ Error creating output directory: {e}")
                     raise
             
-            # Get all PNG files from the barcode directory
-            barcode_files = glob.glob(os.path.join(self.output_dir, "*.png"))
+            # Get PNG files from the barcode directory, filtered by session_id if provided
+            if session_id:
+                # Filter files by session_id pattern (e.g., barcode_template_session_20251108_092111_*.png)
+                # The session_id format is: template_session_20251108_092827
+                # File format is: barcode_template_session_20251108_092827_0001.png
+                # So we need to match: *template_session_20251108_092827*.png
+                pattern = os.path.join(self.output_dir, f"*{session_id}*.png")
+                barcode_files = glob.glob(pattern)
+                print(f"🔍 Looking for PNG files matching session_id '{session_id}' in: {self.output_dir}")
+                print(f"🔍 Using pattern: {pattern}")
+                
+                # If no files found with session_id, try alternative patterns
+                if not barcode_files:
+                    # Try with "barcode_" prefix
+                    alt_pattern = os.path.join(self.output_dir, f"barcode_{session_id}*.png")
+                    barcode_files = glob.glob(alt_pattern)
+                    print(f"🔍 Alternative pattern (with barcode_ prefix): {alt_pattern}")
+                    print(f"🔍 Found {len(barcode_files)} files with alternative pattern")
+            else:
+                # Get all PNG files if no session_id provided
+                barcode_files = glob.glob(os.path.join(self.output_dir, "*.png"))
+                print(f"🔍 Looking for all PNG files in: {self.output_dir}")
+            
             barcode_files.sort()  # Sort for consistent ordering
             
-            print(f"🔍 Looking for PNG files in: {self.output_dir}")
-            print(f"🔍 Found {len(barcode_files)} PNG files: {barcode_files}")
+            # Log file count efficiently
+            if len(barcode_files) > 0:
+                print(f"🔍 Found {len(barcode_files)} PNG files for PDF creation")
+                if len(barcode_files) <= 10:
+                    print(f"🔍 Files: {[os.path.basename(f) for f in barcode_files]}")
+                else:
+                    print(f"🔍 Sample files: {[os.path.basename(f) for f in barcode_files[:5]]} ... ({len(barcode_files) - 5} more)")
+            else:
+                print(f"🔍 No PNG files found matching session_id '{session_id}'")
+            
+            # Debug: List all files in directory if no matches found
+            if not barcode_files and session_id:
+                all_files = glob.glob(os.path.join(self.output_dir, "*.png"))
+                print(f"⚠️  DEBUG: No files matched session_id '{session_id}'")
+                print(f"⚠️  DEBUG: Total PNG files in directory: {len(all_files)}")
+                if all_files:
+                    print(f"⚠️  DEBUG: Sample filenames: {[os.path.basename(f) for f in all_files[:5]]}")
+                    print(f"⚠️  DEBUG: Session ID in pattern: {session_id}")
+                    # Check if session_id appears in any filename
+                    matching = [f for f in all_files if session_id in os.path.basename(f)]
+                    print(f"⚠️  DEBUG: Files containing session_id string: {len(matching)}")
+                    if matching:
+                        print(f"⚠️  DEBUG: Using files containing session_id string")
+                        barcode_files = matching
+                        barcode_files.sort()
             
             if not barcode_files:
                 print("❌ No barcode images found to include in PDF")
@@ -1032,6 +1133,8 @@ class BarcodeService:
             images_per_page = grid_cols * grid_rows
             total_pages = (len(barcode_files) + images_per_page - 1) // images_per_page
             
+            print(f"📄 Creating PDF: {total_pages} page(s), {images_per_page} images per page")
+            
             for page_num in range(total_pages):
                 if page_num > 0:
                     c.showPage()  # Start new page
@@ -1041,10 +1144,17 @@ class BarcodeService:
                 end_idx = min(start_idx + images_per_page, len(barcode_files))
                 page_images = barcode_files[start_idx:end_idx]
                 
-                print(f"📄 Processing page {page_num + 1}/{total_pages} ({len(page_images)} images)")
+                # Log page progress
+                if total_pages > 1:
+                    print(f"📄 Processing page {page_num + 1}/{total_pages} ({len(page_images)} images)")
                 
                 # Place images in grid
                 for i, image_path in enumerate(page_images):
+                    # Verify image file exists before trying to add it
+                    if not os.path.exists(image_path):
+                        print(f"⚠️  Warning: Image file not found: {image_path}")
+                        continue
+                    
                     # Calculate grid position
                     row = i // grid_cols
                     col = i % grid_cols
@@ -1054,12 +1164,32 @@ class BarcodeService:
                     y = page_height - margin - ((row + 1) * cell_height) + image_padding
                     
                     try:
-                        # Add image to PDF
-                        c.drawImage(ImageReader(image_path), x, y, 
-                                  width=image_width, height=image_height, 
-                                  preserveAspectRatio=True, anchor='sw')
+                        # Verify file is readable
+                        if not os.access(image_path, os.R_OK):
+                            print(f"⚠️  Warning: Image file is not readable: {image_path}")
+                            continue
+                        
+                        # Add image to PDF with explicit memory management
+                        image_reader = None
+                        try:
+                            image_reader = ImageReader(image_path)
+                            c.drawImage(image_reader, x, y, 
+                                      width=image_width, height=image_height, 
+                                      preserveAspectRatio=True, anchor='sw')
+                            # Log progress every 10 images or for first/last
+                            if (i + 1) % 10 == 0 or i == 0 or i == len(page_images) - 1:
+                                print(f"✅ Added image {i+1}/{len(page_images)} to page {page_num + 1}")
+                        finally:
+                            # Explicitly clean up image reader to free memory
+                            if image_reader is not None:
+                                # ImageReader doesn't have explicit close, but we can help GC
+                                del image_reader
                     except Exception as e:
                         print(f"⚠️  Warning: Could not add image {os.path.basename(image_path)}: {e}")
+                        import traceback
+                        print(f"⚠️  Image add error traceback: {traceback.format_exc()}")
+                        # Continue with next image instead of failing entire PDF
+                        continue
             
             # Save the PDF
             try:
@@ -1118,35 +1248,9 @@ class BarcodeService:
             print(f"📄 Total pages: {total_pages}")
             print(f"📐 Grid layout: {grid_cols} columns × {grid_rows} rows")
             
-            # Clean up PNG files immediately after PDF creation to prevent duplication
-            try:
-                # Ensure output directory exists before cleanup
-                if not os.path.exists(self.output_dir):
-                    print(f"⚠️  Warning: Output directory does not exist: {self.output_dir}")
-                    os.makedirs(self.output_dir, exist_ok=True, mode=0o755)
-                
-                png_files = glob.glob(os.path.join(self.output_dir, "*.png"))
-                if png_files:
-                    print(f"🧹 Cleaning up {len(png_files)} PNG files after PDF creation...")
-                    cleaned_count = 0
-                    for png_file in png_files:
-                        try:
-                            if os.path.exists(png_file) and os.access(png_file, os.W_OK):
-                                os.remove(png_file)
-                                cleaned_count += 1
-                                print(f"🧹 Cleaned up PNG file: {os.path.basename(png_file)}")
-                            else:
-                                print(f"⚠️  Warning: Cannot remove PNG file (missing or no write permission): {os.path.basename(png_file)}")
-                        except Exception as e:
-                            print(f"⚠️  Warning: Could not remove PNG file {os.path.basename(png_file)}: {e}")
-                    print(f"✅ Cleaned up {cleaned_count}/{len(png_files)} PNG files after PDF creation")
-                else:
-                    print(f"ℹ️  No PNG files to clean up in {self.output_dir}")
-            except Exception as e:
-                print(f"⚠️  Warning: Error during PNG cleanup: {e}")
-                import traceback
-                print(f"⚠️  Cleanup traceback: {traceback.format_exc()}")
-                # Don't fail PDF creation if cleanup fails
+            # NOTE: PNG files are NOT cleaned up here. They will be archived when a new session starts.
+            # This ensures files are available for verification and download until the next upload.
+            # Cleanup happens in archive_existing_files() which is called at the start of new sessions.
             
             return pdf_filename
         
@@ -1751,6 +1855,18 @@ class BarcodeService:
             print(f"🎨 TEMPLATE RENDERER: Excel row keys: {list(excel_row.keys())}")
             print(f"🎨 TEMPLATE RENDERER: Output path: {output_path}")
             
+            # Ensure output directory exists before saving
+            output_dir = os.path.dirname(output_path)
+            if output_dir and not os.path.exists(output_dir):
+                print(f"📁 Creating output directory: {output_dir}")
+                os.makedirs(output_dir, exist_ok=True, mode=0o755)
+            
+            # Verify directory is writable
+            if output_dir and not os.access(output_dir, os.W_OK):
+                error_msg = f"Output directory is not writable: {output_dir}"
+                print(f"❌ {error_msg}")
+                raise Exception(error_msg)
+            
             # Import the Python canvas renderer
             from .python_canvas_renderer import PythonCanvasRenderer
             
@@ -1780,22 +1896,68 @@ class BarcodeService:
             print(f"✅ Python canvas renderer created")
             
             # Render the template with Excel data
-            rendered_image = renderer.render_template(template_dict, excel_row)
+            rendered_image = None
+            file_size = 0
+            try:
+                rendered_image = renderer.render_template(template_dict, excel_row)
+                
+                print(f"✅ Template rendered, image size: {rendered_image.size}")
+                
+                # Verify we have a valid image before saving
+                if rendered_image is None:
+                    raise Exception("Rendered image is None")
+                
+                # Check if image is blank (all pixels are the same color)
+                # This can happen if rendering fails silently
+                if rendered_image.size[0] == 0 or rendered_image.size[1] == 0:
+                    raise Exception(f"Rendered image has invalid size: {rendered_image.size}")
+                
+                # Save the rendered image at scaled size (2x for quality)
+                # The scaled size ensures fonts and elements render at proper visual size
+                # PIL fonts render smaller than browser fonts for the same point size, so the 2x scale compensates
+                rendered_image.save(output_path, "PNG")
+                print(f"✅ Generated barcode using Python Canvas Renderer: {output_path}")
+                
+                # Verify file was actually created
+                if not os.path.exists(output_path):
+                    error_msg = f"File was not created after save: {output_path}"
+                    print(f"❌ {error_msg}")
+                    raise Exception(error_msg)
+                
+                file_size = os.path.getsize(output_path)
+                
+                if file_size == 0:
+                    error_msg = f"File was created but is empty: {output_path}"
+                    print(f"❌ {error_msg}")
+                    raise Exception(error_msg)
+            finally:
+                # Explicitly clean up rendered image to free memory
+                if rendered_image is not None:
+                    rendered_image.close()
+                    del rendered_image
+                # Clean up renderer canvas
+                if hasattr(renderer, 'canvas') and renderer.canvas is not None:
+                    renderer.canvas.close()
+                    del renderer.canvas
+                if hasattr(renderer, 'draw') and renderer.draw is not None:
+                    del renderer.draw
+                del renderer
             
-            print(f"✅ Template rendered, image size: {rendered_image.size}")
-            
-            # Save the rendered image at scaled size (2x for quality)
-            # The scaled size ensures fonts and elements render at proper visual size
-            # PIL fonts render smaller than browser fonts for the same point size, so the 2x scale compensates
-            rendered_image.save(output_path, "PNG")
-            print(f"✅ Generated barcode using Python Canvas Renderer: {output_path}")
+            print(f"✅ File verified: {output_path} ({file_size} bytes)")
             
         except Exception as e:
             print(f"❌ Error creating barcode with Python Canvas Renderer: {e}")
             import traceback
             print(f"❌ Traceback: {traceback.format_exc()}")
             # Fallback to simple QR code
-            await self._create_simple_qr_code("Error", output_path)
+            try:
+                await self._create_simple_qr_code("Error", output_path)
+                # Verify fallback file was created
+                if not os.path.exists(output_path):
+                    raise Exception(f"Fallback QR code file was not created: {output_path}")
+            except Exception as fallback_error:
+                print(f"❌ Fallback QR code creation also failed: {fallback_error}")
+                raise Exception(f"Failed to create barcode file: {e}. Fallback also failed: {fallback_error}")
 
     async def _render_component(self, draw: ImageDraw.Draw, component, excel_row: Dict[str, Any], base_img: Image.Image):
         """Render a single component from the template"""

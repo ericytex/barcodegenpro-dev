@@ -11,6 +11,8 @@ echo "From: $LOCAL_DIR"
 echo ""
 
 rsync -avz --progress \
+  --no-owner \
+  --no-group \
   --exclude='node_modules/' \
   --exclude='dist/' \
   --exclude='build/' \
@@ -48,6 +50,7 @@ rsync -avz --progress \
   --exclude='frontend/.bun/' \
   --exclude='*.tar.gz' \
   --exclude='*.zip' \
+  --exclude='barcode_service.py' \
   --delete \
   "$LOCAL_DIR/" "$REMOTE/"
 

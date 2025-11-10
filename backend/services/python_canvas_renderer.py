@@ -231,27 +231,14 @@ class PythonCanvasRenderer:
             return excel_row[column_name]
         
         # Try case-insensitive match
-        column_name_lower = column_name.lower().strip()
+        column_name_lower = column_name.lower()
         for key, value in excel_row.items():
-            if key.lower().strip() == column_name_lower:
+            if key.lower() == column_name_lower:
                 return value
         
-        # Try partial match (e.g., "IMEI" matches "IMEI/SN", "IMEI/SN" matches "IMEI")
-        # Normalize both by removing special chars and comparing
-        column_normalized = column_name_lower.replace('/', '').replace('_', '').replace('-', '').replace(' ', '')
+        # Try partial match (e.g., "IMEI/SN" matches "IMEI/SN" or "imei/sn")
         for key, value in excel_row.items():
-            key_normalized = key.lower().replace('/', '').replace('_', '').replace('-', '').replace(' ', '')
-            # Check if one contains the other (e.g., "imei" in "imeisn" or vice versa)
-            if column_normalized in key_normalized or key_normalized in column_normalized:
-                return value
-        
-        # Try keyword matching (e.g., "IMEI" should match "IMEI/SN")
-        column_keywords = set(column_name_lower.split('/'))
-        for key, value in excel_row.items():
-            key_lower = key.lower()
-            key_keywords = set(key_lower.split('/'))
-            # If any keyword matches, return the value
-            if column_keywords & key_keywords:  # Set intersection
+            if key.lower().replace('/', '').replace('_', '').replace('-', '') == column_name_lower.replace('/', '').replace('_', '').replace('-', ''):
                 return value
         
         return ''
