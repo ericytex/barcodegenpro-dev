@@ -1156,15 +1156,8 @@ class BarcodeService:
                         print(f"📱 Detected Itel from filename: {os.path.basename(barcode_file)}")
                         break
             
-            # Override grid for Itel barcodes ONLY (use 4 columns for better spacing)
-            # Keep default 5x12 for all other barcodes
-            if is_itel_barcodes:
-                original_grid = f"{grid_cols}x{grid_rows}"
-                grid_cols = 4  # Use 4 columns for Itel barcodes
-                grid_rows = 12  # Keep 12 rows
-                print(f"📱 Detected Itel barcodes - OVERRIDING grid from {original_grid} to 4x12 for better spacing")
-            else:
-                print(f"📐 Using default grid ({grid_cols}x{grid_rows})")
+            # Use standard grid for all barcodes (no special override for Itel)
+            print(f"📐 Using grid ({grid_cols}x{grid_rows})")
             
             print(f"📄 Creating PDF with {len(barcode_files)} barcode images...")
             print(f"📁 PDF will be saved as: {pdf_path}")
