@@ -87,7 +87,7 @@ export function useBarcodeApi(): UseBarcodeApiReturn {
       const request: BarcodeGenerationRequest = {
         items,
         create_pdf: options.createPdf ?? true,
-        pdf_grid_cols: options.pdfGridCols ?? 5,
+        pdf_grid_cols: options.pdfGridCols ?? 4,
         pdf_grid_rows: options.pdfGridRows ?? 12,
         auto_generate_second_imei: options.autoGenerateSecondImei ?? true,
         device_type: options.deviceType,

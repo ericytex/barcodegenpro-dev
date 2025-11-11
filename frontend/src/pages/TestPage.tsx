@@ -48,7 +48,7 @@ function TestPage() {
     try {
       await generateBarcodes([testItem], {
         createPdf: true,
-        pdfGridCols: 5,
+        pdfGridCols: 4,
         pdfGridRows: 12,
       });
       

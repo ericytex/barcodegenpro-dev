@@ -985,7 +985,12 @@ class BarcodeService:
             print(f"🎨 TEMPLATE SERVICE: Session ID for PDF: {session_id}")
             pdf_filename = f"barcode_collection_{session_id}.pdf"
             print(f"🎨 TEMPLATE SERVICE: PDF filename will be: {pdf_filename}")
-            pdf_path = self.create_pdf_from_barcodes(pdf_filename, session_id=session_id)
+            # Pass template name to enable Itel detection for smaller grid
+            pdf_path = self.create_pdf_from_barcodes(
+                pdf_filename, 
+                session_id=session_id,
+                template_name=template.name
+            )
             
             if pdf_path:
                 print(f"✅ TEMPLATE SERVICE: PDF created successfully: {pdf_path}")
@@ -1013,7 +1018,10 @@ class BarcodeService:
     
     def create_pdf_from_barcodes(self, pdf_filename: Optional[str] = None, 
                                grid_cols: int = 5, grid_rows: int = 12, # Dashboard default 5x12
-                               session_id: str = None) -> Optional[str]:
+                               session_id: str = None, 
+                               device_type: Optional[str] = None,
+                               template_name: Optional[str] = None,
+                               barcode_filenames: Optional[List[str]] = None) -> Optional[str]:
         """Create a PDF with all generated barcode images arranged in a grid"""
         try:
             # Set default PDF filename if not provided
@@ -1053,8 +1061,19 @@ class BarcodeService:
                     print(f"❌ Error creating output directory: {e}")
                     raise
             
-            # Get PNG files from the barcode directory, filtered by session_id if provided
-            if session_id:
+            # Get PNG files from the barcode directory
+            # Priority: 1. Use provided filenames, 2. Match by session_id, 3. Get all PNG files
+            if barcode_filenames:
+                # Use the provided list of filenames directly
+                barcode_files = []
+                for filename in barcode_filenames:
+                    file_path = os.path.join(self.output_dir, filename)
+                    if os.path.exists(file_path):
+                        barcode_files.append(file_path)
+                    else:
+                        print(f"⚠️  Warning: File not found: {file_path}")
+                print(f"🔍 Using provided filenames: {len(barcode_files)} of {len(barcode_filenames)} files found")
+            elif session_id:
                 # Filter files by session_id pattern (e.g., barcode_template_session_20251108_092111_*.png)
                 # The session_id format is: template_session_20251108_092827
                 # File format is: barcode_template_session_20251108_092827_0001.png
@@ -1108,6 +1127,45 @@ class BarcodeService:
                 print("❌ No barcode images found to include in PDF")
                 return None
             
+            # Detect if these are Itel barcodes by checking:
+            # 1. device_type parameter (if provided)
+            # 2. template_name parameter (if provided)
+            # 3. Filenames (check first 5 files as sample)
+            is_itel_barcodes = False
+            
+            # Check device_type parameter
+            if device_type:
+                device_type_lower = device_type.lower()
+                if 'itel' in device_type_lower:
+                    is_itel_barcodes = True
+                    print(f"📱 Detected Itel from device_type: {device_type}")
+            
+            # Check template_name parameter
+            if not is_itel_barcodes and template_name:
+                template_name_lower = template_name.lower()
+                if 'itel' in template_name_lower:
+                    is_itel_barcodes = True
+                    print(f"📱 Detected Itel from template_name: {template_name}")
+            
+            # Check filenames as fallback
+            if not is_itel_barcodes:
+                for barcode_file in barcode_files[:5]:  # Check first 5 files as sample
+                    filename_lower = os.path.basename(barcode_file).lower()
+                    if 'itel' in filename_lower:
+                        is_itel_barcodes = True
+                        print(f"📱 Detected Itel from filename: {os.path.basename(barcode_file)}")
+                        break
+            
+            # Override grid for Itel barcodes ONLY (use 4 columns for better spacing)
+            # Keep default 5x12 for all other barcodes
+            if is_itel_barcodes:
+                original_grid = f"{grid_cols}x{grid_rows}"
+                grid_cols = 4  # Use 4 columns for Itel barcodes
+                grid_rows = 12  # Keep 12 rows
+                print(f"📱 Detected Itel barcodes - OVERRIDING grid from {original_grid} to 4x12 for better spacing")
+            else:
+                print(f"📐 Using default grid ({grid_cols}x{grid_rows})")
+            
             print(f"📄 Creating PDF with {len(barcode_files)} barcode images...")
             print(f"📁 PDF will be saved as: {pdf_path}")
             
@@ -1115,8 +1173,8 @@ class BarcodeService:
             c = canvas.Canvas(pdf_path, pagesize=A4)
             page_width, page_height = A4
             
-            # Calculate grid dimensions
-            margin = 20  # Margin from page edges
+            # Calculate grid dimensions - add small margins to prevent clipping
+            margin = 10  # Small margin to prevent edge clipping
             available_width = page_width - (2 * margin)
             available_height = page_height - (2 * margin)
             
@@ -1124,10 +1182,10 @@ class BarcodeService:
             cell_width = available_width / grid_cols
             cell_height = available_height / grid_rows
             
-            # Calculate image size (leave some padding in each cell)
-            image_padding = 2
-            image_width = cell_width - (2 * image_padding)
-            image_height = cell_height - (2 * image_padding)
+            # Calculate base image size - use full cell
+            image_padding = 0
+            base_image_width = cell_width
+            base_image_height = cell_height
             
             # Process images in batches of grid_cols * grid_rows
             images_per_page = grid_cols * grid_rows
@@ -1159,9 +1217,9 @@ class BarcodeService:
                     row = i // grid_cols
                     col = i % grid_cols
                     
-                    # Calculate position on page
-                    x = margin + (col * cell_width) + image_padding
-                    y = page_height - margin - ((row + 1) * cell_height) + image_padding
+                    # Calculate position on page - no margins or padding
+                    x = col * cell_width
+                    y = page_height - ((row + 1) * cell_height)
                     
                     try:
                         # Verify file is readable
@@ -1172,10 +1230,66 @@ class BarcodeService:
                         # Add image to PDF with explicit memory management
                         image_reader = None
                         try:
-                            image_reader = ImageReader(image_path)
-                            c.drawImage(image_reader, x, y, 
-                                      width=image_width, height=image_height, 
-                                      preserveAspectRatio=True, anchor='sw')
+                            # Get actual image dimensions and scale up
+                            from PIL import Image as PILImage
+                            with PILImage.open(image_path) as img:
+                                original_width, original_height = img.size
+                                
+                                # Calculate scale factor to make image larger
+                                # Scale to fill cell and then add extra scaling
+                                scale_factor = 1.5  # 150% of cell size
+                                scaled_width = base_image_width * scale_factor
+                                scaled_height = base_image_height * scale_factor
+                                
+                                # Maintain aspect ratio based on original image
+                                img_aspect = original_width / original_height
+                                cell_aspect = base_image_width / base_image_height
+                                
+                                # If image aspect doesn't match cell, adjust to maintain image aspect
+                                if abs(img_aspect - cell_aspect) > 0.1:
+                                    if img_aspect > cell_aspect:
+                                        # Image is wider - use width as base
+                                        scaled_height = scaled_width / img_aspect
+                                    else:
+                                        # Image is taller - use height as base
+                                        scaled_width = scaled_height * img_aspect
+                                
+                                # Calculate cell boundaries (within margins)
+                                cell_left = margin + (col * cell_width)
+                                cell_bottom = page_height - margin - ((row + 1) * cell_height)
+                                cell_right = cell_left + cell_width
+                                cell_top = cell_bottom + cell_height
+                                
+                                # Center the scaled image in the cell
+                                cell_center_x = cell_left + (cell_width / 2)
+                                cell_center_y = cell_bottom + (cell_height / 2)
+                                
+                                # Calculate position for 'sw' anchor (bottom-left corner)
+                                x = cell_center_x - (scaled_width / 2)
+                                y = cell_center_y - (scaled_height / 2)
+                                
+                                # Constrain to page boundaries to prevent clipping
+                                # Ensure image doesn't go beyond left/right margins
+                                if x < margin:
+                                    x = margin
+                                if x + scaled_width > page_width - margin:
+                                    x = page_width - margin - scaled_width
+                                
+                                # Ensure image doesn't go beyond top/bottom margins
+                                if y < margin:
+                                    y = margin
+                                if y + scaled_height > page_height - margin:
+                                    y = page_height - margin - scaled_height
+                                
+                                if i == 0:  # Log first image for debugging
+                                    print(f"📏 Image scaling: original={original_width}x{original_height}, cell={base_image_width:.1f}x{base_image_height:.1f}, scaled={scaled_width:.1f}x{scaled_height:.1f}, pos=({x:.1f}, {y:.1f})")
+                                
+                                image_reader = ImageReader(image_path)
+                                # Draw image at scaled size, constrained to page boundaries
+                                c.drawImage(image_reader, x, y, 
+                                          width=scaled_width, height=scaled_height, 
+                                          preserveAspectRatio=True, anchor='sw', mask='auto')
+                            
                             # Log progress every 10 images or for first/last
                             if (i + 1) % 10 == 0 or i == 0 or i == len(page_images) - 1:
                                 print(f"✅ Added image {i+1}/{len(page_images)} to page {page_num + 1}")

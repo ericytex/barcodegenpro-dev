@@ -528,7 +528,8 @@ async def generate_barcodes(
                 pdf_filename=None,
                 grid_cols=request.pdf_grid_cols,
                 grid_rows=request.pdf_grid_rows,
-                session_id=session_id
+                session_id=session_id,
+                device_type=request.device_type
             )
             print(f"📄 PDF creation result: {pdf_file}")
         
@@ -755,7 +756,9 @@ async def upload_excel_and_generate(
                 pdf_file = barcode_service.create_pdf_from_barcodes(
                     grid_cols=pdf_grid_cols,
                     grid_rows=pdf_grid_rows,
-                    session_id=session_id
+                    session_id=session_id,
+                    device_type=device_type,
+                    barcode_filenames=files  # Pass the actual generated filenames
                 )
                 print(f"📄 PDF created: {pdf_file}")
             except Exception as pdf_error:
@@ -1717,7 +1720,8 @@ async def generate_enhanced_barcodes(
                     pdf_filename=None,
                     grid_cols=request.pdf_grid_cols,
                     grid_rows=request.pdf_grid_rows,
-                    session_id=result.get("session_id")
+                    session_id=result.get("session_id"),
+                    device_type=request.device_type
                 )
                 pdf_file = pdf_filename
             

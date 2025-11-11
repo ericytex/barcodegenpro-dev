@@ -31,7 +31,7 @@ export function ApiFileUpload({ onFileUploaded, onDirectGeneration }: ApiFileUpl
   const [uploadStatus, setUploadStatus] = useState<'idle' | 'success' | 'error'>('idle');
   const [uploadedFileName, setUploadedFileName] = useState<string>('');
   const [useDirectGeneration, setUseDirectGeneration] = useState(false);
-  const [pdfGridCols, setPdfGridCols] = useState(5);
+  const [pdfGridCols, setPdfGridCols] = useState(4);
   const [pdfGridRows, setPdfGridRows] = useState(12);
   const [showInsufficientTokens, setShowInsufficientTokens] = useState(false);
   const [showPurchaseModal, setShowPurchaseModal] = useState(false);
@@ -212,6 +212,11 @@ export function ApiFileUpload({ onFileUploaded, onDirectGeneration }: ApiFileUpl
       
       // Use the response data directly instead of the hook state
       if (response && response.generated_files) {
+        console.log('🔍 APIFILEUPLOAD: Response received:', {
+          generated_files: response.generated_files?.length,
+          pdf_file: response.pdf_file,
+          full_response: response
+        });
         onDirectGeneration?.(response.generated_files, response.pdf_file || undefined);
       } else {
         console.error('❌ Invalid response structure:', response);

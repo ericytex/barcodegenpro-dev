@@ -50,6 +50,12 @@ const Index = () => {
   };
 
   const handleDirectGeneration = async (files: string[], pdfFile?: string) => {
+    console.log('🔍 Index: handleDirectGeneration called with:', {
+      filesCount: files?.length,
+      pdfFile,
+      files: files?.slice(0, 3)
+    });
+    
     // Verify files exist before setting results
     try {
       // Get list of available files from API
@@ -85,16 +91,22 @@ const Index = () => {
           console.warn('Missing files:', files.filter(f => !existingFiles.includes(f)));
         }
         
-        setDirectGenerationResults({ files: existingFiles.length > 0 ? existingFiles : files, pdfFile });
+        const results = { files: existingFiles.length > 0 ? existingFiles : files, pdfFile };
+        console.log('🔍 Index: Setting directGenerationResults:', results);
+        setDirectGenerationResults(results);
       } else {
         // If list fails, just use the files as-is
         console.warn('Could not verify files, using response as-is');
-        setDirectGenerationResults({ files, pdfFile });
+        const results = { files, pdfFile };
+        console.log('🔍 Index: Setting directGenerationResults (fallback):', results);
+        setDirectGenerationResults(results);
       }
     } catch (error) {
       console.error('Error verifying files:', error);
       // Fallback: use files as-is
-      setDirectGenerationResults({ files, pdfFile });
+      const results = { files, pdfFile };
+      console.log('🔍 Index: Setting directGenerationResults (error fallback):', results);
+      setDirectGenerationResults(results);
     }
     
     setUploadedData([]); // Clear uploaded data when using direct generation
@@ -177,7 +189,7 @@ const Index = () => {
                   <p className="text-sm text-blue-700">Individual barcode images (PDF collection available below)</p>
                 </div>
 
-                {directGenerationResults.pdfFile && (
+                {directGenerationResults.pdfFile ? (
                   <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
                     <div className="flex items-center gap-2 mb-2">
                       <FileSpreadsheet className="w-4 h-4 text-red-600" />
@@ -205,6 +217,19 @@ const Index = () => {
                       <Download className="w-3 h-3 mr-1" />
                       Download PDF
                     </Button>
+                  </div>
+                ) : (
+                  <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+                    <div className="flex items-center gap-2 mb-2">
+                      <FileSpreadsheet className="w-4 h-4 text-yellow-600" />
+                      <span className="font-medium text-yellow-800">PDF Collection</span>
+                    </div>
+                    <p className="text-sm text-yellow-700">
+                      PDF file not available. Check console for details.
+                    </p>
+                    <p className="text-xs text-yellow-600 mt-1">
+                      Debug: pdfFile = {String(directGenerationResults.pdfFile)}
+                    </p>
                   </div>
                 )}
               </div>

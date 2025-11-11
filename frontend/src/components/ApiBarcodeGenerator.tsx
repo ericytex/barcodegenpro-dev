@@ -36,7 +36,7 @@ export function ApiBarcodeGenerator({ data, onBarcodeGenerated }: ApiBarcodeGene
     clearError,
   } = useBarcodeApi();
 
-  const [pdfGridCols, setPdfGridCols] = useState(5);
+  const [pdfGridCols, setPdfGridCols] = useState(4);
   const [pdfGridRows, setPdfGridRows] = useState(12);
   const [createPdf, setCreatePdf] = useState(true);
   
@@ -187,7 +187,7 @@ export function ApiBarcodeGenerator({ data, onBarcodeGenerated }: ApiBarcodeGene
                     min="1"
                     max="10"
                     value={pdfGridCols}
-                    onChange={(e) => setPdfGridCols(parseInt(e.target.value) || 5)}
+                    onChange={(e) => setPdfGridCols(parseInt(e.target.value) || 4)}
                   />
                 </div>
                 <div className="space-y-2">

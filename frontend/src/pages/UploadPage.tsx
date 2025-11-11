@@ -1,6 +1,6 @@
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Upload, FileSpreadsheet, AlertCircle, Smartphone, FileText, Sparkles, CheckCircle2, Info } from "lucide-react";
+import { Upload, FileSpreadsheet, AlertCircle, Smartphone, FileText, Sparkles, CheckCircle2, Info, Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
@@ -11,6 +11,7 @@ import { DeviceSelector, useDeviceSelector } from "@/components/DeviceSelector";
 import { TemplateSelector } from "@/components/TemplateSelector";
 import { BarcodeTemplate } from "@/utils/templateManager";
 import { ExcelColumnPreview } from "@/components/ExcelColumnPreview";
+import { AuthenticatedPdfPreview } from "@/components/AuthenticatedImagePreview";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 
@@ -19,7 +20,9 @@ export default function UploadPage() {
   const [uploading, setUploading] = useState(false);
   const [directGeneration, setDirectGeneration] = useState(false);
   const [selectedTemplate, setSelectedTemplate] = useState<BarcodeTemplate | null>(null);
-  const { uploadExcelAndGenerate, isLoading, error } = useBarcodeApi();
+  const [pdfFile, setPdfFile] = useState<string | null>(null);
+  const [generatedFiles, setGeneratedFiles] = useState<string[]>([]);
+  const { uploadExcelAndGenerate, isLoading, error, downloadFile } = useBarcodeApi();
   
   // Device selector state
   const { selectedDevice, handleDeviceChange } = useDeviceSelector();
@@ -66,13 +69,17 @@ export default function UploadPage() {
 
       const result = await uploadExcelAndGenerate(uploadedFile, {
         createPdf: true,
-        pdfGridCols: 5,
+        pdfGridCols: 4,
         pdfGridRows: 12,
         autoGenerateSecondImei: true,
         deviceType: directGeneration ? selectedDevice?.device_type : undefined,
         deviceId: directGeneration ? selectedDevice?.id : undefined,
         templateId: templateId || undefined,
       });
+      
+      // Store results for display
+      setPdfFile(result.pdf_file || null);
+      setGeneratedFiles(result.generated_files || []);
       
       const templateInfo = selectedTemplate ? ` using template "${selectedTemplate.name}"` : '';
       toast.success(`Successfully processed ${uploadedFile.name}${templateInfo}! Generated ${result.generated_files.length} barcodes.`);
@@ -295,6 +302,76 @@ export default function UploadPage() {
                 )}
               </CardContent>
             </Card>
+
+            {/* Results Section - PDF Preview and Download */}
+            {(pdfFile || generatedFiles.length > 0) && (
+              <Card className="border-2 shadow-lg border-green-200 bg-gradient-to-br from-green-50 to-green-100/50">
+                <CardHeader className="bg-gradient-to-r from-green-50 to-green-100/50 border-b">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 bg-green-500 rounded-lg">
+                      <CheckCircle2 className="w-5 h-5 text-white" />
+                    </div>
+                    <div>
+                      <CardTitle className="text-xl">Generation Results</CardTitle>
+                      <CardDescription>Your barcodes have been generated successfully</CardDescription>
+                    </div>
+                  </div>
+                </CardHeader>
+                <CardContent className="pt-6 space-y-4">
+                  {/* PDF File */}
+                  {pdfFile && (
+                    <div className="space-y-2">
+                      <Label>PDF Collection</Label>
+                      <div className="flex items-center justify-between p-3 bg-muted/30 rounded-lg">
+                        <div className="flex items-center gap-2">
+                          <FileText className="w-4 h-4 text-red-600" />
+                          <span className="font-medium">{pdfFile}</span>
+                          <Badge variant="secondary">PDF</Badge>
+                        </div>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={async () => {
+                            try {
+                              await downloadFile(pdfFile, true);
+                              toast.success(`Downloaded ${pdfFile}`);
+                            } catch (error) {
+                              toast.error(`Failed to download PDF: ${error}`);
+                            }
+                          }}
+                        >
+                          <Download className="w-3 h-3 mr-1" />
+                          Download PDF
+                        </Button>
+                      </div>
+
+                      {/* Authenticated PDF Preview */}
+                      <div className="space-y-2">
+                        <Label>PDF Preview</Label>
+                        <div className="h-[540px] w-full border rounded-md overflow-hidden bg-white">
+                          <AuthenticatedPdfPreview
+                            filename={pdfFile}
+                            className="w-full h-full"
+                            fallbackText="Loading PDF preview..."
+                            onError={(error) => {
+                              console.error('PDF preview error:', error);
+                              toast.error(`Failed to load PDF preview: ${error.message}`);
+                            }}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Generated Files Count */}
+                  {generatedFiles.length > 0 && (
+                    <div className="text-sm text-muted-foreground">
+                      Generated {generatedFiles.length} barcode file{generatedFiles.length !== 1 ? 's' : ''}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            )}
           </div>
 
           {/* Sidebar - Info and Help */}
