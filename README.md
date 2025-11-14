@@ -82,8 +82,8 @@ This script will:
 
 Detailed guides are available:
 - **`QUICK_START.md`** - Fastest way to get started (2 minutes)
-- **`DEPLOYMENT_OPTIONS.md`** - All deployment options explained
 - **`LOCAL_DEPLOYMENT.md`** - Detailed local development setup
+- **`DEPLOYMENT_GUIDE.md`** - Production/VPS deployment guide
 - **`start-local.sh`** - Interactive deployment script
 
 ### Local Development (No Docker)
@@ -181,6 +181,11 @@ The `docker-compose.yml` defines three main services:
 - [Docker Quick Start](docs/DOCKER_QUICKSTART.md)
 - [Testing Guide](docs/TESTING_GUIDE.md)
 - [Token System Guide](docs/TOKEN_LOGIC_FLOW.md)
+
+### Troubleshooting
+- [Troubleshooting Guide](docs/troubleshooting/README.md) - Common issues and fixes
+- [502 Bad Gateway](docs/troubleshooting/502_DIAGNOSIS.md) - Diagnosing 502 errors
+- [Permission Issues](docs/troubleshooting/FIX_DEPLOYER_PERMISSIONS.md) - Fixing permission problems
 
 ## 🛠️ Development
 

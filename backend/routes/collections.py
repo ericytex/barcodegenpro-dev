@@ -34,6 +34,18 @@ class CollectionStatsResponse(BaseModel):
 class ApiKeyRequest(BaseModel):
     api_key: str = Field(..., description="Optimus collections API key")
 
+class WithdrawRequest(BaseModel):
+    local_phone: str = Field(..., description="Phone number to send money to (e.g., 256701220759)")
+    local_amount: int = Field(..., gt=0, description="Amount to withdraw in local currency")
+    local_country: str = Field("UGA", description="Country code (default: UGA)")
+    local_telecom: str = Field("AIRTEL_OAPI_UGA", description="Telecom provider (default: AIRTEL_OAPI_UGA)")
+    local_currency: str = Field("UGX", description="Currency code (default: UGX)")
+    exchange_quote_reference: Optional[str] = Field(None, description="Optional exchange quote reference")
+
+class UpdateWithdrawStatusRequest(BaseModel):
+    transaction_uid: str = Field(..., description="Transaction UID of the withdraw")
+    manual_status: Optional[str] = Field(None, description="Manual status: 'done', 'not_done', or null to clear")
+
 # ==================== Super Admin Endpoints ====================
 
 @router.get("/", response_model=CollectionsResponse)
@@ -196,4 +208,160 @@ async def refresh_collections_cache(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to refresh cache: {str(e)}"
+        )
+
+@router.get("/balance")
+async def get_available_balance(
+    current_user: dict = Depends(get_current_user)
+):
+    """Get available balance for withdrawal (Super Admin only)"""
+    if not current_user.get('is_super_admin'):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Super admin access required"
+        )
+    
+    try:
+        result = collections_service.get_available_balance()
+        
+        if result.get('success'):
+            return result
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=result.get('message', 'Failed to get available balance')
+            )
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting available balance: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to get available balance: {str(e)}"
+        )
+
+@router.post("/withdraw")
+async def create_withdraw(
+    request: WithdrawRequest,
+    current_user: dict = Depends(get_current_user)
+):
+    """Create a withdraw request (Super Admin only)"""
+    if not current_user.get('is_super_admin'):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Super admin access required"
+        )
+    
+    try:
+        result = collections_service.create_withdraw(
+            local_phone=request.local_phone,
+            local_amount=request.local_amount,
+            local_country=request.local_country,
+            local_telecom=request.local_telecom,
+            local_currency=request.local_currency,
+            exchange_quote_reference=request.exchange_quote_reference,
+            user_id=current_user['user_id']
+        )
+        
+        if result.get('success'):
+            logger.info(f"Withdraw created by user {current_user['user_id']}: {result.get('data', {}).get('app_transaction_uid')}")
+            return result
+        else:
+            error_code = status.HTTP_400_BAD_REQUEST
+            if result.get('error') == 'insufficient_balance':
+                error_code = status.HTTP_400_BAD_REQUEST
+            elif result.get('error') == 'API key not configured':
+                error_code = status.HTTP_500_INTERNAL_SERVER_ERROR
+            
+            raise HTTPException(
+                status_code=error_code,
+                detail=result.get('message', 'Failed to create withdraw')
+            )
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error creating withdraw: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to create withdraw: {str(e)}"
+        )
+
+@router.patch("/withdraw/status")
+async def update_withdraw_status(
+    request: UpdateWithdrawStatusRequest,
+    current_user: dict = Depends(get_current_user)
+):
+    """Update manual status of a withdraw (Super Admin only)"""
+    if not current_user.get('is_super_admin'):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Super admin access required"
+        )
+    
+    try:
+        result = collections_service.update_withdraw_status(
+            transaction_uid=request.transaction_uid,
+            manual_status=request.manual_status
+        )
+        
+        if result.get('success'):
+            logger.info(f"Withdraw status updated by user {current_user['user_id']}: {request.transaction_uid} -> {request.manual_status}")
+            return result
+        else:
+            error_code = status.HTTP_400_BAD_REQUEST
+            if result.get('error') == 'not_found':
+                error_code = status.HTTP_404_NOT_FOUND
+            
+            raise HTTPException(
+                status_code=error_code,
+                detail=result.get('message', 'Failed to update withdraw status')
+            )
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error updating withdraw status: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to update withdraw status: {str(e)}"
+        )
+
+@router.get("/withdraws")
+async def get_withdraws(
+    limit: int = Query(100, ge=1, le=100, description="Number of records to return"),
+    offset: int = Query(0, ge=0, description="Number of records to skip"),
+    status_filter: Optional[str] = Query(None, description="Filter by status (pending, completed, failed)"),
+    current_user: dict = Depends(get_current_user)
+):
+    """Get withdraw history (Super Admin only)"""
+    if not current_user.get('is_super_admin'):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Super admin access required"
+        )
+    
+    try:
+        result = collections_service.get_withdraws(
+            limit=limit,
+            offset=offset,
+            status=status_filter
+        )
+        
+        if result.get('success'):
+            return result
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=result.get('message', 'Failed to get withdraws')
+            )
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting withdraws: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to get withdraws: {str(e)}"
         )

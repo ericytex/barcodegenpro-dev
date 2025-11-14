@@ -4,11 +4,14 @@ SQLite Database Models for Barcode Generator
 
 import sqlite3
 import os
+import logging
 from datetime import datetime
 from typing import List, Dict, Any, Optional
 from dataclasses import dataclass
 from models.feature_models import Feature
 from models.database_connection import initialize_connection_pool, get_connection_context
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -454,6 +457,50 @@ class DatabaseManager:
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_collections_status ON collections(status)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_collections_synced_at ON collections(synced_at)")
 
+            # Create withdraws table for tracking money withdrawals
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS withdraws (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    transaction_uid TEXT UNIQUE NOT NULL,
+                    app_transaction_uid TEXT UNIQUE NOT NULL,
+                    amount INTEGER NOT NULL,
+                    currency TEXT DEFAULT 'UGX',
+                    local_country TEXT NOT NULL,
+                    local_telecom TEXT NOT NULL,
+                    local_phone TEXT NOT NULL,
+                    local_amount INTEGER NOT NULL,
+                    exchange_quote_reference TEXT,
+                    status TEXT DEFAULT 'pending',
+                    manual_status TEXT DEFAULT NULL,
+                    optimus_response TEXT,
+                    error_message TEXT,
+                    created_by INTEGER,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    completed_at DATETIME,
+                    FOREIGN KEY (created_by) REFERENCES users(id)
+                )
+            """)
+            
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_withdraws_transaction_uid ON withdraws(transaction_uid)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_withdraws_app_transaction_uid ON withdraws(app_transaction_uid)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_withdraws_status ON withdraws(status)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_withdraws_created_at ON withdraws(created_at)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_withdraws_created_by ON withdraws(created_by)")
+            
+            # Add manual_status column if it doesn't exist (migration for existing databases)
+            try:
+                # Check if column exists by querying table info
+                cursor.execute("PRAGMA table_info(withdraws)")
+                columns = [column[1] for column in cursor.fetchall()]
+                
+                if 'manual_status' not in columns:
+                    cursor.execute("ALTER TABLE withdraws ADD COLUMN manual_status TEXT DEFAULT NULL")
+                    conn.commit()
+                    logger.info("Added manual_status column to withdraws table")
+            except Exception as e:
+                logger.warning(f"Could not add manual_status column (may already exist): {e}")
+
             # Create features table
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS features (
@@ -505,7 +552,8 @@ class DatabaseManager:
                 ('payment_production_auth_token', '', 'Production payment API auth token'),
                 ('payment_webhook_url', '', 'Payment webhook URL for callbacks'),
                 ('collections_api_url', 'https://optimus.santripe.com/transactions/mobile-money-collections/', 'Collections API base URL'),
-                ('collections_api_key', 'pki_7ve43chhGjdjjBag49ZNqJ6AZ3e29CGgq9494399pxfw7AdjsMqx9ZFma84993i', 'Optimus collections monitoring API key')
+                ('collections_api_key', 'pki_7ve43chhGjdjjBag49ZNqJ6AZ3e29CGgq9494399pxfw7AdjsMqx9ZFma84993i', 'Optimus collections monitoring API key'),
+                ('transfers_api_key', '', 'Optimus transfers API key (for withdrawals). If empty, uses collections_api_key')
             ]
             
             for key, value, description in default_settings:

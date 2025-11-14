@@ -4,6 +4,7 @@ Optimus Collections Monitoring Service
 import requests
 import sqlite3
 import json
+import uuid
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Any
 import logging
@@ -23,18 +24,29 @@ class OptimusCollectionsService:
         try:
             with sqlite3.connect(self.db_path) as conn:
                 cursor = conn.cursor()
+                # Try to load transfers API key first, fallback to collections API key
                 cursor.execute("""
                     SELECT setting_value FROM token_settings 
-                    WHERE setting_key = 'optimus_collections_api_key'
+                    WHERE setting_key = 'transfers_api_key'
                 """)
                 result = cursor.fetchone()
                 if result and result[0]:
                     self.api_key = result[0]
-                    logger.info("Optimus collections API key loaded from settings")
+                    logger.info("Optimus transfers API key loaded from settings")
                 else:
-                    # Use default production API key
-                    self.api_key = "pki_7ve43chhGjdjjBag49ZNqJ6AZ3e29CGgq9494399pxfw7AdjsMqx9ZFma84993i"
-                    logger.info("Using default production collections API key")
+                    # Fallback to collections API key
+                    cursor.execute("""
+                        SELECT setting_value FROM token_settings 
+                        WHERE setting_key = 'optimus_collections_api_key'
+                    """)
+                    result = cursor.fetchone()
+                    if result and result[0]:
+                        self.api_key = result[0]
+                        logger.info("Using Optimus collections API key for transfers")
+                    else:
+                        # Use default production API key
+                        self.api_key = "pki_7ve43chhGjdjjBag49ZNqJ6AZ3e29CGgq9494399pxfw7AdjsMqx9ZFma84993i"
+                        logger.info("Using default production API key")
         except Exception as e:
             logger.error(f"Error loading Optimus API key: {e}")
             # Fallback to default key
@@ -498,3 +510,427 @@ class OptimusCollectionsService:
         except Exception as e:
             logger.error(f"Error querying transaction {transaction_uid}: {e}")
             return {"success": False, "error": str(e)}
+    
+    def get_available_balance(self) -> Dict[str, Any]:
+        """
+        Calculate available balance for withdrawal
+        Available balance = Total completed collections - Total completed withdraws
+        """
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                conn.row_factory = sqlite3.Row
+                cursor = conn.cursor()
+                
+                # Get total completed collections
+                cursor.execute("""
+                    SELECT COALESCE(SUM(amount), 0) as total_collections
+                    FROM collections
+                    WHERE status IN ('completed', 'success')
+                """)
+                collections_result = cursor.fetchone()
+                total_collections = collections_result['total_collections'] or 0
+                
+                # Get total completed withdraws (considering manual_status)
+                # Count withdraws that are either:
+                # 1. Status is completed/success AND manual_status is NOT 'not_done', OR
+                # 2. Manual status is 'done' (but status is not completed/success to avoid double counting)
+                # Exclude any withdraws marked as 'not_done' (they didn't actually go through)
+                cursor.execute("""
+                    SELECT COALESCE(SUM(amount), 0) as total_withdraws
+                    FROM withdraws
+                    WHERE (
+                        (status IN ('completed', 'success') AND (manual_status IS NULL OR manual_status != 'not_done'))
+                        OR (manual_status = 'done' AND status NOT IN ('completed', 'success'))
+                    )
+                """)
+                withdraws_result = cursor.fetchone()
+                total_withdraws = withdraws_result['total_withdraws'] or 0
+                
+                # Calculate available balance
+                available_balance = total_collections - total_withdraws
+                
+                # Get pending withdraws (excluding those marked as 'not_done')
+                cursor.execute("""
+                    SELECT COALESCE(SUM(amount), 0) as pending_withdraws
+                    FROM withdraws
+                    WHERE status = 'pending' AND (manual_status IS NULL OR manual_status != 'not_done')
+                """)
+                pending_result = cursor.fetchone()
+                pending_withdraws = pending_result['pending_withdraws'] or 0
+                
+                return {
+                    "success": True,
+                    "data": {
+                        "total_collections": total_collections,
+                        "total_withdraws": total_withdraws,
+                        "pending_withdraws": pending_withdraws,
+                        "available_balance": max(0, available_balance),  # Don't allow negative
+                        "formatted_total_collections": f"{total_collections:,} UGX",
+                        "formatted_total_withdraws": f"{total_withdraws:,} UGX",
+                        "formatted_pending_withdraws": f"{pending_withdraws:,} UGX",
+                        "formatted_available_balance": f"{max(0, available_balance):,} UGX"
+                    }
+                }
+        except Exception as e:
+            logger.error(f"Error calculating available balance: {e}")
+            return {
+                "success": False,
+                "error": "balance_error",
+                "message": str(e)
+            }
+    
+    def create_withdraw(self, 
+                       local_phone: str,
+                       local_amount: int,
+                       local_country: str = "UGA",
+                       local_telecom: str = "AIRTEL_OAPI_UGA",
+                       local_currency: str = "UGX",
+                       exchange_quote_reference: Optional[str] = None,
+                       user_id: Optional[int] = None) -> Dict[str, Any]:
+        """
+        Create a withdraw request to Optimus transfers API
+        
+        Args:
+            local_phone: Phone number to send money to (e.g., "256701220759")
+            local_amount: Amount to withdraw in local currency
+            local_country: Country code (default: "UGA")
+            local_telecom: Telecom provider (default: "AIRTEL_OAPI_UGA")
+            local_currency: Currency code (default: "UGX")
+            exchange_quote_reference: Optional exchange quote reference
+            user_id: User ID creating the withdraw
+        """
+        if not self.api_key:
+            return {
+                "success": False,
+                "error": "API key not configured",
+                "message": "Please configure Optimus API key in settings"
+            }
+        
+        # Generate unique transaction UIDs
+        transaction_uid = str(uuid.uuid4())
+        app_transaction_uid = f"W{int(datetime.now().timestamp())}{uuid.uuid4().hex[:8].upper()}"
+        
+        try:
+            # Check available balance first
+            balance_result = self.get_available_balance()
+            if not balance_result.get('success'):
+                return balance_result
+            
+            available_balance = balance_result['data']['available_balance']
+            if local_amount > available_balance:
+                return {
+                    "success": False,
+                    "error": "insufficient_balance",
+                    "message": f"Insufficient balance. Available: {available_balance:,} UGX, Requested: {local_amount:,} UGX",
+                    "available_balance": available_balance,
+                    "requested_amount": local_amount
+                }
+            
+            # Prepare withdraw request payload
+            payload = {
+                "data": {
+                    "local_country": local_country,
+                    "local_telecom": local_telecom,
+                    "local_currency": local_currency,
+                    "local_phone": local_phone,
+                    "local_amount": local_amount,
+                    "app_transaction_uid": app_transaction_uid
+                }
+            }
+            
+            # Add exchange quote reference if provided
+            if exchange_quote_reference:
+                payload["data"]["exchange_quote_reference"] = exchange_quote_reference
+            
+            # Optimus transfers API endpoint
+            url = "https://optimus.santripe.com/v2/transfers/mobile-money/new"
+            
+            headers = {
+                "Content-Type": "application/json",
+                "Authorization": self.api_key
+            }
+            
+            logger.info(f"Creating withdraw: {app_transaction_uid}, Amount: {local_amount} {local_currency}, Phone: {local_phone}")
+            
+            # Make API request
+            response = requests.post(url, json=payload, headers=headers, timeout=30)
+            
+            # Save withdraw record to database
+            withdraw_data = {
+                "transaction_uid": transaction_uid,
+                "app_transaction_uid": app_transaction_uid,
+                "amount": local_amount,
+                "currency": local_currency,
+                "local_country": local_country,
+                "local_telecom": local_telecom,
+                "local_phone": local_phone,
+                "local_amount": local_amount,
+                "exchange_quote_reference": exchange_quote_reference,
+                "status": "pending",
+                "optimus_response": json.dumps(response.json()) if response.status_code in [200, 201] else None,
+                "error_message": None if response.status_code in [200, 201] else response.text,
+                "created_by": user_id
+            }
+            
+            if response.status_code in [200, 201]:
+                response_data = response.json()
+                withdraw_data["status"] = response_data.get("status", "pending")
+                withdraw_data["optimus_response"] = json.dumps(response_data)
+                
+                # Update status based on response
+                if response_data.get("success") or response_data.get("status") in ["completed", "success"]:
+                    withdraw_data["status"] = "completed"
+                    withdraw_data["completed_at"] = datetime.now().isoformat()
+                
+                self._save_withdraw_to_db(withdraw_data)
+                
+                logger.info(f"Withdraw created successfully: {app_transaction_uid}")
+                
+                return {
+                    "success": True,
+                    "message": "Withdraw request created successfully",
+                    "data": {
+                        "transaction_uid": transaction_uid,
+                        "app_transaction_uid": app_transaction_uid,
+                        "amount": local_amount,
+                        "currency": local_currency,
+                        "phone": local_phone,
+                        "status": withdraw_data["status"],
+                        "optimus_response": response_data
+                    }
+                }
+            else:
+                withdraw_data["status"] = "failed"
+                withdraw_data["error_message"] = response.text
+                self._save_withdraw_to_db(withdraw_data)
+                
+                logger.error(f"Withdraw failed: {response.status_code} - {response.text}")
+                
+                return {
+                    "success": False,
+                    "error": f"API error: {response.status_code}",
+                    "message": response.text,
+                    "transaction_uid": transaction_uid,
+                    "app_transaction_uid": app_transaction_uid
+                }
+                
+        except requests.exceptions.Timeout:
+            logger.error("Optimus API timeout during withdraw")
+            return {
+                "success": False,
+                "error": "timeout",
+                "message": "Request to Optimus API timed out"
+            }
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Optimus API request error during withdraw: {e}")
+            return {
+                "success": False,
+                "error": "request_error",
+                "message": str(e)
+            }
+        except Exception as e:
+            logger.error(f"Error creating withdraw: {e}")
+            return {
+                "success": False,
+                "error": "unknown_error",
+                "message": str(e)
+            }
+    
+    def _save_withdraw_to_db(self, withdraw_data: Dict[str, Any]):
+        """Save withdraw record to database"""
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                
+                cursor.execute("""
+                    INSERT INTO withdraws (
+                        transaction_uid, app_transaction_uid, amount, currency,
+                        local_country, local_telecom, local_phone, local_amount,
+                        exchange_quote_reference, status, optimus_response,
+                        error_message, created_by, completed_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    withdraw_data.get("transaction_uid"),
+                    withdraw_data.get("app_transaction_uid"),
+                    withdraw_data.get("amount"),
+                    withdraw_data.get("currency"),
+                    withdraw_data.get("local_country"),
+                    withdraw_data.get("local_telecom"),
+                    withdraw_data.get("local_phone"),
+                    withdraw_data.get("local_amount"),
+                    withdraw_data.get("exchange_quote_reference"),
+                    withdraw_data.get("status"),
+                    withdraw_data.get("optimus_response"),
+                    withdraw_data.get("error_message"),
+                    withdraw_data.get("created_by"),
+                    withdraw_data.get("completed_at")
+                ))
+                
+                conn.commit()
+                logger.info(f"Withdraw saved to database: {withdraw_data.get('app_transaction_uid')}")
+                
+        except Exception as e:
+            logger.error(f"Error saving withdraw to database: {e}")
+    
+    def get_withdraws(self, limit: int = 100, offset: int = 0, 
+                     status: Optional[str] = None) -> Dict[str, Any]:
+        """Get withdraw history"""
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                conn.row_factory = sqlite3.Row
+                cursor = conn.cursor()
+                
+                query = "SELECT * FROM withdraws WHERE 1=1"
+                params = []
+                
+                if status:
+                    query += " AND status = ?"
+                    params.append(status)
+                
+                query += " ORDER BY created_at DESC LIMIT ? OFFSET ?"
+                params.extend([limit, offset])
+                
+                cursor.execute(query, params)
+                rows = cursor.fetchall()
+                withdraws = [dict(row) for row in rows]
+                
+                # Parse JSON responses
+                for withdraw in withdraws:
+                    if withdraw.get('optimus_response'):
+                        try:
+                            withdraw['optimus_response'] = json.loads(withdraw['optimus_response'])
+                        except:
+                            pass
+                
+                # Get total count
+                count_query = "SELECT COUNT(*) as total FROM withdraws WHERE 1=1"
+                count_params = []
+                if status:
+                    count_query += " AND status = ?"
+                    count_params.append(status)
+                
+                cursor.execute(count_query, count_params)
+                total_count = cursor.fetchone()['total']
+                
+                # Calculate statistics (considering manual_status)
+                # Get total withdraws amount (including those marked as 'done' manually)
+                # Exclude withdraws marked as 'not_done' (they didn't actually go through)
+                cursor.execute("""
+                    SELECT COALESCE(SUM(amount), 0) as total_withdraws_amount
+                    FROM withdraws
+                    WHERE (
+                        (status IN ('completed', 'success') AND (manual_status IS NULL OR manual_status != 'not_done'))
+                        OR (manual_status = 'done' AND status NOT IN ('completed', 'success'))
+                    )
+                """)
+                total_withdraws_result = cursor.fetchone()
+                total_amount = total_withdraws_result['total_withdraws_amount'] or 0
+                
+                # Get status counts
+                cursor.execute("""
+                    SELECT 
+                        status,
+                        COUNT(*) as status_count
+                    FROM withdraws
+                    GROUP BY status
+                """)
+                
+                status_stats = cursor.fetchall()
+                status_counts = {row['status']: row['status_count'] for row in status_stats}
+                
+                return {
+                    "success": True,
+                    "data": {
+                        "withdraws": withdraws,
+                        "total_count": total_count,
+                        "total_amount": total_amount,
+                        "formatted_total_amount": f"{total_amount:,} UGX",
+                        "status_counts": status_counts
+                    }
+                }
+                
+        except Exception as e:
+            logger.error(f"Error getting withdraws: {e}")
+            return {
+                "success": False,
+                "error": "withdraws_error",
+                "message": str(e)
+            }
+    
+    def update_withdraw_status(self, transaction_uid: str, manual_status: str) -> Dict[str, Any]:
+        """
+        Update manual status of a withdraw
+        
+        Args:
+            transaction_uid: Transaction UID of the withdraw
+            manual_status: Manual status ('done', 'not_done', or None to clear)
+        """
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                cursor = conn.cursor()
+                
+                # Validate manual_status
+                valid_statuses = ['done', 'not_done', None]
+                if manual_status not in valid_statuses:
+                    return {
+                        "success": False,
+                        "error": "invalid_status",
+                        "message": f"Invalid status. Must be one of: {valid_statuses}"
+                    }
+                
+                # Update the withdraw
+                cursor.execute("""
+                    UPDATE withdraws 
+                    SET manual_status = ?, updated_at = CURRENT_TIMESTAMP
+                    WHERE transaction_uid = ? OR app_transaction_uid = ?
+                """, (manual_status, transaction_uid, transaction_uid))
+                
+                if cursor.rowcount == 0:
+                    return {
+                        "success": False,
+                        "error": "not_found",
+                        "message": "Withdraw not found"
+                    }
+                
+                conn.commit()
+                
+                # Get updated withdraw
+                conn.row_factory = sqlite3.Row
+                cursor = conn.cursor()
+                cursor.execute("""
+                    SELECT * FROM withdraws 
+                    WHERE transaction_uid = ? OR app_transaction_uid = ?
+                """, (transaction_uid, transaction_uid))
+                
+                updated_row = cursor.fetchone()
+                if updated_row:
+                    withdraw = dict(updated_row)
+                    
+                    # Parse JSON response if exists
+                    if withdraw.get('optimus_response'):
+                        try:
+                            withdraw['optimus_response'] = json.loads(withdraw['optimus_response'])
+                        except:
+                            pass
+                    
+                    logger.info(f"Withdraw {transaction_uid} manual status updated to: {manual_status}")
+                    
+                    return {
+                        "success": True,
+                        "message": f"Withdraw status updated to {manual_status}",
+                        "data": withdraw
+                    }
+                else:
+                    return {
+                        "success": False,
+                        "error": "not_found",
+                        "message": "Withdraw not found after update"
+                    }
+                    
+        except Exception as e:
+            logger.error(f"Error updating withdraw status: {e}")
+            return {
+                "success": False,
+                "error": "update_error",
+                "message": str(e)
+            }

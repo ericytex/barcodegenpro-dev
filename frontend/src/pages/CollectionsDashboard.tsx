@@ -26,11 +26,16 @@ import {
   X,
   ArrowUpDown,
   ChevronUp,
-  ChevronDown
+  ChevronDown,
+  Wallet,
+  ArrowDownToLine
 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Label } from '@/components/ui/label';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8034';
 
@@ -39,6 +44,20 @@ const CollectionsDashboard: React.FC = () => {
   const [optimusData, setOptimusData] = useState<any>(null);
   const [loadingOptimus, setLoadingOptimus] = useState(false);
   const [paymentsData, setPaymentsData] = useState<any[]>([]);
+  
+  // Withdraw state
+  const [balanceData, setBalanceData] = useState<any>(null);
+  const [loadingBalance, setLoadingBalance] = useState(false);
+  const [withdrawsData, setWithdrawsData] = useState<any[]>([]);
+  const [isWithdrawModalOpen, setIsWithdrawModalOpen] = useState(false);
+  const [isWithdrawing, setIsWithdrawing] = useState(false);
+  const [withdrawForm, setWithdrawForm] = useState({
+    local_phone: '',
+    local_amount: '',
+    local_country: 'UGA',
+    local_telecom: 'AIRTEL_OAPI_UGA',
+    local_currency: 'UGX'
+  });
   
   // Table state
   const [currentPage, setCurrentPage] = useState(1);
@@ -55,6 +74,9 @@ const CollectionsDashboard: React.FC = () => {
   // Cache state
   const [lastDataLoad, setLastDataLoad] = useState<number>(0);
   const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes in milliseconds
+  
+  // Tab state
+  const [activeTab, setActiveTab] = useState('collections');
 
   useEffect(() => {
     const shouldLoadData = () => {
@@ -67,11 +89,170 @@ const CollectionsDashboard: React.FC = () => {
       console.log('Loading fresh data (cache expired or first load)');
       loadOptimusData();
       loadPaymentsData();
+      loadBalance();
+      loadWithdraws();
       setLastDataLoad(Date.now());
     } else {
       console.log('Using cached data (cache still valid)');
     }
   }, []);
+
+  const loadBalance = async () => {
+    setLoadingBalance(true);
+    try {
+      // Add timestamp to prevent caching
+      const timestamp = new Date().getTime();
+      const url = API_BASE_URL.endsWith('/api') 
+        ? `${API_BASE_URL}/collections/balance?t=${timestamp}`
+        : `${API_BASE_URL}/api/collections/balance?t=${timestamp}`;
+      const response = await fetch(url, {
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('access_token')}`
+        },
+        cache: 'no-store', // Ensure we get fresh data
+        method: 'GET'
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        console.log('Balance API response:', data); // Debug log
+        if (data.success && data.data) {
+          setBalanceData(data.data);
+          console.log('Balance updated:', data.data); // Debug log
+        } else {
+          console.error('Failed to load balance - invalid response:', data);
+        }
+      } else {
+        const errorData = await response.json().catch(() => ({}));
+        console.error('Failed to load balance:', response.status, errorData);
+      }
+    } catch (error) {
+      console.error('Error loading balance:', error);
+    } finally {
+      setLoadingBalance(false);
+    }
+  };
+
+  const loadWithdraws = async () => {
+    try {
+      const url = API_BASE_URL.endsWith('/api') 
+        ? `${API_BASE_URL}/collections/withdraws?limit=50`
+        : `${API_BASE_URL}/api/collections/withdraws?limit=50`;
+      const response = await fetch(url, {
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('access_token')}`
+        }
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        setWithdrawsData(data.data?.withdraws || []);
+      }
+    } catch (error) {
+      console.error('Error loading withdraws:', error);
+    }
+  };
+
+  const handleMarkWithdrawStatus = async (transactionUid: string, status: string | null) => {
+    try {
+      const url = API_BASE_URL.endsWith('/api') 
+        ? `${API_BASE_URL}/collections/withdraw/status`
+        : `${API_BASE_URL}/api/collections/withdraw/status`;
+      
+      const response = await fetch(url, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('access_token')}`
+        },
+        body: JSON.stringify({
+          transaction_uid: transactionUid,
+          manual_status: status
+        })
+      });
+
+      const data = await response.json();
+
+      if (response.ok && data.success) {
+        toast.success(`Withdraw marked as ${status === 'done' ? 'done' : status === 'not_done' ? 'not done' : 'cleared'}`);
+        // Force immediate refresh of balance and withdraws
+        // Use setTimeout to ensure state updates properly
+        setTimeout(async () => {
+          await loadBalance();
+          await loadWithdraws();
+        }, 100);
+      } else {
+        toast.error(data.message || 'Failed to update withdraw status');
+      }
+    } catch (error) {
+      console.error('Error updating withdraw status:', error);
+      toast.error('Failed to update withdraw status');
+    }
+  };
+
+  const handleWithdraw = async () => {
+    if (!withdrawForm.local_phone || !withdrawForm.local_amount) {
+      toast.error('Please fill in all required fields');
+      return;
+    }
+
+    const amount = parseInt(withdrawForm.local_amount);
+    if (isNaN(amount) || amount <= 0) {
+      toast.error('Please enter a valid amount');
+      return;
+    }
+
+    if (balanceData && amount > balanceData.available_balance) {
+      toast.error(`Insufficient balance. Available: ${balanceData.formatted_available_balance}`);
+      return;
+    }
+
+    setIsWithdrawing(true);
+    try {
+      const url = API_BASE_URL.endsWith('/api') 
+        ? `${API_BASE_URL}/collections/withdraw`
+        : `${API_BASE_URL}/api/collections/withdraw`;
+      
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('access_token')}`
+        },
+        body: JSON.stringify({
+          local_phone: withdrawForm.local_phone,
+          local_amount: amount,
+          local_country: withdrawForm.local_country,
+          local_telecom: withdrawForm.local_telecom,
+          local_currency: withdrawForm.local_currency
+        })
+      });
+
+      const data = await response.json();
+
+      if (response.ok && data.success) {
+        toast.success(`Withdraw request created successfully! Transaction: ${data.data?.app_transaction_uid}`);
+        setIsWithdrawModalOpen(false);
+        setWithdrawForm({
+          local_phone: '',
+          local_amount: '',
+          local_country: 'UGA',
+          local_telecom: 'AIRTEL_OAPI_UGA',
+          local_currency: 'UGX'
+        });
+        // Reload balance and withdraws
+        loadBalance();
+        loadWithdraws();
+      } else {
+        toast.error(data.message || 'Failed to create withdraw request');
+      }
+    } catch (error) {
+      console.error('Error creating withdraw:', error);
+      toast.error('Failed to create withdraw request');
+    } finally {
+      setIsWithdrawing(false);
+    }
+  };
 
   // Check if user is super admin
   if (!user?.is_super_admin) {
@@ -254,6 +435,8 @@ const CollectionsDashboard: React.FC = () => {
   };
 
   const refreshData = async () => {
+    loadBalance();
+    loadWithdraws();
     console.log('Manual refresh requested');
     setLastDataLoad(0); // Reset cache to force fresh load
     await loadOptimusData();
@@ -451,7 +634,22 @@ const CollectionsDashboard: React.FC = () => {
         </div>
 
         <div className="p-4 space-y-4">
-          {/* Refactored Statistics Cards */}
+          {/* Tabs for Collections and Withdraws */}
+          <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+            <TabsList className="grid w-full max-w-md grid-cols-2 mb-6">
+              <TabsTrigger value="collections" className="flex items-center gap-2">
+                <TrendingUp className="h-4 w-4" />
+                Collections
+              </TabsTrigger>
+              <TabsTrigger value="withdraws" className="flex items-center gap-2">
+                <ArrowDownToLine className="h-4 w-4" />
+                Withdraw
+              </TabsTrigger>
+            </TabsList>
+
+            {/* Collections Tab */}
+            <TabsContent value="collections" className="space-y-4">
+              {/* Refactored Statistics Cards */}
           {optimusData && (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
               {/* Total Transactions */}
@@ -774,15 +972,281 @@ const CollectionsDashboard: React.FC = () => {
             </Card>
           )}
 
-          {/* Loading State */}
-          {!optimusData && (
-            <div className="flex items-center justify-center py-12">
-              <div className="text-center">
-                <RefreshCw className="h-8 w-8 animate-spin text-gray-400 mx-auto mb-4" />
-                <p className="text-gray-500">Loading transaction data...</p>
+              {/* Loading State */}
+              {!optimusData && (
+                <div className="flex items-center justify-center py-12">
+                  <div className="text-center">
+                    <RefreshCw className="h-8 w-8 animate-spin text-gray-400 mx-auto mb-4" />
+                    <p className="text-gray-500">Loading transaction data...</p>
+                  </div>
+                </div>
+              )}
+            </TabsContent>
+
+            {/* Withdraws Tab */}
+            <TabsContent value="withdraws" className="space-y-4">
+              {/* Available Balance Card */}
+              {balanceData && (
+                <Card className="border-2 border-green-200 shadow-lg bg-gradient-to-br from-green-50 to-emerald-50">
+                  <CardContent className="p-6">
+                    <div className="flex items-center justify-between">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-2">
+                          <Wallet className="h-5 w-5 text-green-600" />
+                          <p className="text-sm font-medium text-green-700">Available Balance for Withdrawal</p>
+                        </div>
+                        <p className="text-4xl font-bold text-green-900 mb-1">
+                          {balanceData.formatted_available_balance || '0 UGX'}
+                        </p>
+                        <div className="flex items-center gap-4 text-xs text-gray-600 mt-2">
+                          <span>Total Collections: {balanceData.formatted_total_collections}</span>
+                          <span>•</span>
+                          <span>Total Withdrawn: {balanceData.formatted_total_withdraws}</span>
+                          {balanceData.pending_withdraws > 0 && (
+                            <>
+                              <span>•</span>
+                              <span className="text-yellow-600">Pending: {balanceData.formatted_pending_withdraws}</span>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                      <Dialog open={isWithdrawModalOpen} onOpenChange={setIsWithdrawModalOpen}>
+                        <DialogTrigger asChild>
+                          <Button 
+                            className="bg-green-600 hover:bg-green-700 text-white"
+                            disabled={loadingBalance || (balanceData?.available_balance || 0) <= 0}
+                          >
+                            <ArrowDownToLine className="h-4 w-4 mr-2" />
+                            Withdraw
+                          </Button>
+                        </DialogTrigger>
+                        <DialogContent className="sm:max-w-[500px]">
+                          <DialogHeader>
+                            <DialogTitle>Withdraw Money</DialogTitle>
+                            <DialogDescription>
+                              Withdraw money to a mobile number. Available balance: {balanceData?.formatted_available_balance}
+                            </DialogDescription>
+                          </DialogHeader>
+                          <div className="space-y-4 py-4">
+                            <div className="space-y-2">
+                              <Label htmlFor="phone">Mobile Number</Label>
+                              <Input
+                                id="phone"
+                                placeholder="256701220759"
+                                value={withdrawForm.local_phone}
+                                onChange={(e) => setWithdrawForm({...withdrawForm, local_phone: e.target.value})}
+                              />
+                              <p className="text-xs text-gray-500">Enter phone number without + sign (e.g., 256701220759)</p>
+                            </div>
+                            <div className="space-y-2">
+                              <Label htmlFor="amount">Amount (UGX)</Label>
+                              <Input
+                                id="amount"
+                                type="number"
+                                placeholder="2000"
+                                value={withdrawForm.local_amount}
+                                onChange={(e) => setWithdrawForm({...withdrawForm, local_amount: e.target.value})}
+                              />
+                            </div>
+                            <div className="space-y-2">
+                              <Label htmlFor="telecom">Telecom Provider</Label>
+                              <Select
+                                value={withdrawForm.local_telecom}
+                                onValueChange={(value) => setWithdrawForm({...withdrawForm, local_telecom: value})}
+                              >
+                                <SelectTrigger>
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="AIRTEL_OAPI_UGA">Airtel (Uganda)</SelectItem>
+                                  <SelectItem value="MTN_MOMO_UGA">MTN (Uganda)</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            </div>
+                            <div className="flex gap-2 pt-4">
+                              <Button
+                                onClick={handleWithdraw}
+                                disabled={isWithdrawing}
+                                className="flex-1 bg-green-600 hover:bg-green-700"
+                              >
+                                {isWithdrawing ? 'Processing...' : 'Withdraw'}
+                              </Button>
+                              <Button
+                                variant="outline"
+                                onClick={() => setIsWithdrawModalOpen(false)}
+                                disabled={isWithdrawing}
+                              >
+                                Cancel
+                              </Button>
+                            </div>
+                          </div>
+                        </DialogContent>
+                      </Dialog>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* Withdraws History Table */}
+          <Card className="border-0 shadow-sm">
+            <CardHeader className="pb-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <ArrowDownToLine className="h-5 w-5 text-green-600" />
+                  <CardTitle className="text-lg font-semibold">Withdraw History</CardTitle>
+                </div>
+                <Badge variant="outline" className="text-xs">
+                  {withdrawsData.length} withdraw{withdrawsData.length !== 1 ? 's' : ''}
+                </Badge>
               </div>
-            </div>
-          )}
+            </CardHeader>
+            <CardContent className="p-0">
+              {withdrawsData.length > 0 ? (
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead className="bg-gray-50 border-b">
+                      <tr>
+                        <th className="text-left p-3 text-xs font-medium text-gray-600 uppercase tracking-wider">
+                          Date
+                        </th>
+                        <th className="text-left p-3 text-xs font-medium text-gray-600 uppercase tracking-wider">
+                          Status
+                        </th>
+                        <th className="text-left p-3 text-xs font-medium text-gray-600 uppercase tracking-wider">
+                          Transaction ID
+                        </th>
+                        <th className="text-left p-3 text-xs font-medium text-gray-600 uppercase tracking-wider">
+                          Phone Number
+                        </th>
+                        <th className="text-left p-3 text-xs font-medium text-gray-600 uppercase tracking-wider">
+                          Network
+                        </th>
+                        <th className="text-left p-3 text-xs font-medium text-gray-600 uppercase tracking-wider">
+                          Amount
+                        </th>
+                        <th className="text-left p-3 text-xs font-medium text-gray-600 uppercase tracking-wider">
+                          Currency
+                        </th>
+                        <th className="text-left p-3 text-xs font-medium text-gray-600 uppercase tracking-wider">
+                          Mark Status
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {withdrawsData.map((withdraw: any, index: number) => (
+                        <tr key={index} className="border-b hover:bg-gray-50 transition-colors">
+                          <td className="p-3">
+                            <div className="text-xs text-gray-900">
+                              {formatDate(withdraw.created_at)}
+                            </div>
+                          </td>
+                          <td className="p-3">
+                            <div className="flex items-center gap-2">
+                              <div className={`p-1 rounded-full ${
+                                withdraw.status === 'completed' 
+                                  ? 'bg-green-100' 
+                                  : withdraw.status === 'pending'
+                                  ? 'bg-yellow-100'
+                                  : 'bg-red-100'
+                              }`}>
+                                {withdraw.status === 'completed' ? 
+                                  <CheckCircle className="h-3 w-3 text-green-600" /> :
+                                  withdraw.status === 'pending' ?
+                                  <Clock className="h-3 w-3 text-yellow-600" /> :
+                                  <X className="h-3 w-3 text-red-600" />
+                                }
+                              </div>
+                              <Badge 
+                                className={`text-xs font-normal ${
+                                  withdraw.status === 'completed' 
+                                    ? 'bg-green-100 text-green-600 border-green-200 hover:bg-green-200' 
+                                    : withdraw.status === 'pending'
+                                    ? 'bg-yellow-100 text-yellow-600 border-yellow-200 hover:bg-yellow-200'
+                                    : 'bg-red-100 text-red-600 border-red-200 hover:bg-red-200'
+                                }`}
+                              >
+                                {withdraw.status === 'completed' ? 'Completed' : 
+                                 withdraw.status === 'pending' ? 'Pending' : 'Failed'}
+                              </Badge>
+                            </div>
+                          </td>
+                          <td className="p-3">
+                            <div className="font-mono text-xs text-gray-900" title={withdraw.app_transaction_uid}>
+                              {withdraw.app_transaction_uid?.slice(0, 16)}...
+                            </div>
+                          </td>
+                          <td className="p-3">
+                            <div className="text-xs font-medium text-gray-900">
+                              {withdraw.local_phone}
+                            </div>
+                          </td>
+                          <td className="p-3">
+                            <div className="text-xs text-gray-600">
+                              {withdraw.local_telecom === 'AIRTEL_OAPI_UGA' ? (
+                                <Badge className="bg-red-100 text-red-600 border-red-200">Airtel</Badge>
+                              ) : withdraw.local_telecom === 'MTN_MOMO_UGA' ? (
+                                <Badge className="bg-yellow-100 text-yellow-600 border-yellow-200">MTN</Badge>
+                              ) : (
+                                <Badge variant="outline">{withdraw.local_telecom}</Badge>
+                              )}
+                            </div>
+                          </td>
+                          <td className="p-3">
+                            <div className="font-semibold text-xs text-gray-900">
+                              {parseInt(withdraw.local_amount || withdraw.amount || 0).toLocaleString()} {withdraw.local_currency || withdraw.currency || 'UGX'}
+                            </div>
+                          </td>
+                          <td className="p-3">
+                            <div className="text-xs text-gray-600">
+                              {withdraw.local_currency || withdraw.currency || 'UGX'}
+                            </div>
+                          </td>
+                          <td className="p-3">
+                            <div className="flex items-center gap-2">
+                              <Button
+                                size="sm"
+                                variant={withdraw.manual_status === 'done' ? 'default' : 'outline'}
+                                className={`text-xs h-7 ${
+                                  withdraw.manual_status === 'done' 
+                                    ? 'bg-green-600 hover:bg-green-700 text-white' 
+                                    : 'border-gray-300'
+                                }`}
+                                onClick={() => handleMarkWithdrawStatus(withdraw.transaction_uid || withdraw.app_transaction_uid, 'done')}
+                              >
+                                <CheckCircle className="h-3 w-3 mr-1" />
+                                Done
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant={withdraw.manual_status === 'not_done' ? 'default' : 'outline'}
+                                className={`text-xs h-7 ${
+                                  withdraw.manual_status === 'not_done' 
+                                    ? 'bg-red-600 hover:bg-red-700 text-white' 
+                                    : 'border-gray-300'
+                                }`}
+                                onClick={() => handleMarkWithdrawStatus(withdraw.transaction_uid || withdraw.app_transaction_uid, 'not_done')}
+                              >
+                                <X className="h-3 w-3 mr-1" />
+                                Not Done
+                              </Button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <div className="flex flex-col items-center justify-center py-12 text-center">
+                  <ArrowDownToLine className="h-12 w-12 text-gray-300 mb-4" />
+                  <p className="text-gray-500 text-sm">No withdraws yet</p>
+                  <p className="text-gray-400 text-xs mt-1">Withdrawals will appear here once you make your first withdrawal</p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+            </TabsContent>
+          </Tabs>
         </div>
       </div>
 
