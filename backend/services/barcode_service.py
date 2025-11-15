@@ -248,10 +248,13 @@ class BarcodeService:
         buffer.seek(0)
         
         # Open and resize the image
-        barcode_img = Image.open(buffer)
-        barcode_img = barcode_img.resize((width, height), Image.Resampling.LANCZOS)
-        
-        return barcode_img
+        try:
+            barcode_img = Image.open(buffer)
+            barcode_img = barcode_img.resize((width, height), Image.Resampling.LANCZOS)
+            return barcode_img
+        finally:
+            # Clean up buffer to free memory
+            buffer.close()
     
     def create_barcode_label(self, imei: str, model: str, color: str, dn: str, 
                            box_id: Optional[str] = None, brand: str = "Infinix", second_label: str = "Box ID") -> Image.Image:
@@ -315,8 +318,15 @@ class BarcodeService:
         
         # 1. First Barcode (IMEI)
         y_pos = 70  # Start position for first barcode
-        imei_barcode_img = self.generate_code128_barcode(imei, width=barcode_width, height=barcode_height)
-        label.paste(imei_barcode_img, (x_start, y_pos))
+        imei_barcode_img = None
+        try:
+            imei_barcode_img = self.generate_code128_barcode(imei, width=barcode_width, height=barcode_height)
+            label.paste(imei_barcode_img, (x_start, y_pos))
+        finally:
+            # Clean up barcode image after pasting
+            if imei_barcode_img is not None:
+                imei_barcode_img.close()
+                del imei_barcode_img
         
         # IMEI label directly under barcode - scale to fit barcode width
         y_pos += barcode_height + 8  # Move y_pos below the barcode
@@ -351,34 +361,54 @@ class BarcodeService:
         full_imei_text = f"{imei_label} {imei_number}"
         
         # Create a temporary image to render the complete text
-        temp_img = Image.new('RGBA', (int(barcode_width * 2), 50), (0, 0, 0, 0))
-        temp_draw = ImageDraw.Draw(temp_img)
-        
-        # Render the complete text with mixed formatting
-        # First draw "IMEI" in bold
-        temp_draw.text((0, 10), imei_label, fill='black', font=bold_font)
-        # Then draw the number in regular font after "IMEI"
-        imei_bbox = temp_draw.textbbox((0, 10), imei_label, font=bold_font)
-        imei_width = imei_bbox[2] - imei_bbox[0]
-        number_x = imei_width + 5  # Small space between "IMEI" and number
-        temp_draw.text((number_x, 10), imei_number, fill='black', font=regular_font)
-        
-        # Get the complete text bounds
-        full_bbox = temp_draw.textbbox((0, 10), full_imei_text, font=bold_font)
-        text_w = full_bbox[2] - full_bbox[0]
-        text_h = full_bbox[3] - full_bbox[1]
-        
-        # Crop to actual text bounds
-        cropped = temp_img.crop((0, full_bbox[1], text_w, full_bbox[3]))
-        # Stretch to fill barcode width
-        stretched_img = cropped.resize((int(barcode_width), text_h), Image.Resampling.LANCZOS)
-        label.paste(stretched_img, (int(x_start), int(y_pos)), mask=stretched_img)
+        temp_img = None
+        try:
+            temp_img = Image.new('RGBA', (int(barcode_width * 2), 50), (0, 0, 0, 0))
+            temp_draw = ImageDraw.Draw(temp_img)
+            
+            # Render the complete text with mixed formatting
+            # First draw "IMEI" in bold
+            temp_draw.text((0, 10), imei_label, fill='black', font=bold_font)
+            # Then draw the number in regular font after "IMEI"
+            imei_bbox = temp_draw.textbbox((0, 10), imei_label, font=bold_font)
+            imei_width = imei_bbox[2] - imei_bbox[0]
+            number_x = imei_width + 5  # Small space between "IMEI" and number
+            temp_draw.text((number_x, 10), imei_number, fill='black', font=regular_font)
+            
+            # Get the complete text bounds
+            full_bbox = temp_draw.textbbox((0, 10), full_imei_text, font=bold_font)
+            text_w = full_bbox[2] - full_bbox[0]
+            text_h = full_bbox[3] - full_bbox[1]
+            
+            # Crop to actual text bounds
+            cropped = temp_img.crop((0, full_bbox[1], text_w, full_bbox[3]))
+            # Stretch to fill barcode width
+            stretched_img = cropped.resize((int(barcode_width), text_h), Image.Resampling.LANCZOS)
+            label.paste(stretched_img, (int(x_start), int(y_pos)), mask=stretched_img)
+        finally:
+            # Clean up temporary images to free memory
+            if temp_img is not None:
+                temp_img.close()
+                del temp_img
+            if 'cropped' in locals():
+                cropped.close()
+                del cropped
+            if 'stretched_img' in locals():
+                stretched_img.close()
+                del stretched_img
         
         # 2. Second Barcode (Box ID or IMEI2)
         if box_id:
             y_pos += 35  # Add vertical space for the next barcode
-            box_barcode_img = self.generate_code128_barcode(box_id, width=barcode_width, height=barcode_height)
-            label.paste(box_barcode_img, (x_start, y_pos))
+            box_barcode_img = None
+            try:
+                box_barcode_img = self.generate_code128_barcode(box_id, width=barcode_width, height=barcode_height)
+                label.paste(box_barcode_img, (x_start, y_pos))
+            finally:
+                # Clean up barcode image after pasting
+                if box_barcode_img is not None:
+                    box_barcode_img.close()
+                    del box_barcode_img
             
             # Second label directly under barcode - scale to fit barcode width
             y_pos += barcode_height + 8  # Move y_pos below the barcode
@@ -413,28 +443,41 @@ class BarcodeService:
             full_second_text = f"{box_label} {box_number}"
             
             # Create a temporary image to render the complete text
-            temp_img = Image.new('RGBA', (int(barcode_width * 2), 50), (0, 0, 0, 0))
-            temp_draw = ImageDraw.Draw(temp_img)
-            
-            # Render the complete text with mixed formatting
-            # First draw the label in bold
-            temp_draw.text((0, 10), box_label, fill='black', font=bold_font)
-            # Then draw the number in regular font after the label
-            box_bbox = temp_draw.textbbox((0, 10), box_label, font=bold_font)
-            box_width = box_bbox[2] - box_bbox[0]
-            number_x = box_width + 5  # Small space between label and number
-            temp_draw.text((number_x, 10), box_number, fill='black', font=number_font)
-            
-            # Get the complete text bounds
-            full_bbox = temp_draw.textbbox((0, 10), full_second_text, font=bold_font)
-            text_w = full_bbox[2] - full_bbox[0]
-            text_h = full_bbox[3] - full_bbox[1]
-            
-            # Crop to actual text bounds
-            cropped = temp_img.crop((0, full_bbox[1], text_w, full_bbox[3]))
-            # Stretch to fill barcode width
-            stretched_img = cropped.resize((int(barcode_width), text_h), Image.Resampling.LANCZOS)
-            label.paste(stretched_img, (int(x_start), int(y_pos)), mask=stretched_img)
+            temp_img2 = None
+            try:
+                temp_img2 = Image.new('RGBA', (int(barcode_width * 2), 50), (0, 0, 0, 0))
+                temp_draw = ImageDraw.Draw(temp_img2)
+                
+                # Render the complete text with mixed formatting
+                # First draw the label in bold
+                temp_draw.text((0, 10), box_label, fill='black', font=bold_font)
+                # Then draw the number in regular font after the label
+                box_bbox = temp_draw.textbbox((0, 10), box_label, font=bold_font)
+                box_width = box_bbox[2] - box_bbox[0]
+                number_x = box_width + 5  # Small space between label and number
+                temp_draw.text((number_x, 10), box_number, fill='black', font=number_font)
+                
+                # Get the complete text bounds
+                full_bbox = temp_draw.textbbox((0, 10), full_second_text, font=bold_font)
+                text_w = full_bbox[2] - full_bbox[0]
+                text_h = full_bbox[3] - full_bbox[1]
+                
+                # Crop to actual text bounds
+                cropped2 = temp_img2.crop((0, full_bbox[1], text_w, full_bbox[3]))
+                # Stretch to fill barcode width
+                stretched_img2 = cropped2.resize((int(barcode_width), text_h), Image.Resampling.LANCZOS)
+                label.paste(stretched_img2, (int(x_start), int(y_pos)), mask=stretched_img2)
+            finally:
+                # Clean up temporary images to free memory
+                if temp_img2 is not None:
+                    temp_img2.close()
+                    del temp_img2
+                if 'cropped2' in locals():
+                    cropped2.close()
+                    del cropped2
+                if 'stretched_img2' in locals():
+                    stretched_img2.close()
+                    del stretched_img2
             
             # D/N Text - positioned directly below second barcode
             # Match the number font (regular Arial) and size used for IMEI/second number
@@ -771,6 +814,10 @@ class BarcodeService:
                 filepath = os.path.join(self.output_dir, filename)
                 label.save(filepath, 'PNG', dpi=(300, 300))
                 
+                # Clean up label image after saving
+                label.close()
+                del label
+                
                 print(f"💾 Saving barcode record to database for item {index + 1}...")
                 
                 # Save barcode details immediately to database
@@ -827,6 +874,12 @@ class BarcodeService:
                 continue
         
         print(f"🎉 Barcode generation completed! Generated {len(generated_files)} files")
+        
+        # Final memory cleanup after generation
+        import gc
+        gc.collect()
+        print(f"🧹 Final garbage collection completed after barcode generation")
+        
         return generated_files, session_id
     
     async def generate_barcodes_from_excel(self, file_path: str) -> tuple[List[str], str]:
@@ -1024,6 +1077,11 @@ class BarcodeService:
             print(f"✅ TEMPLATE SERVICE: Generated {len(generated_files)} barcode files")
             print(f"✅ TEMPLATE SERVICE: Session ID: {session_id}")
             
+            # Final memory cleanup after template generation
+            import gc
+            gc.collect()
+            print(f"🧹 TEMPLATE SERVICE: Final garbage collection completed")
+            
             return generated_files, session_id
             
         except Exception as e:
@@ -1191,8 +1249,15 @@ class BarcodeService:
                         print(f"📱 Detected Itel from filename: {os.path.basename(barcode_file)}")
                         break
             
-            # Use standard grid for all barcodes (no special override for Itel)
-            print(f"📐 Using grid ({grid_cols}x{grid_rows})")
+            # Override grid for Itel barcodes ONLY (use 4 columns for better spacing)
+            # Keep default 5x12 for all other barcodes
+            if is_itel_barcodes:
+                original_grid = f"{grid_cols}x{grid_rows}"
+                grid_cols = 4  # Use 4 columns for Itel barcodes
+                grid_rows = 12  # Keep 12 rows
+                print(f"📱 Detected Itel barcodes - OVERRIDING grid from {original_grid} to 4x12 for better spacing")
+            else:
+                print(f"📐 Using default grid ({grid_cols}x{grid_rows})")
             
             print(f"📄 Creating PDF with {len(barcode_files)} barcode images...")
             print(f"📁 PDF will be saved as: {pdf_path}")
@@ -1201,8 +1266,13 @@ class BarcodeService:
             c = canvas.Canvas(pdf_path, pagesize=A4)
             page_width, page_height = A4
             
-            # Calculate grid dimensions - add small margins to prevent clipping
-            margin = 10  # Small margin to prevent edge clipping
+            # Calculate grid dimensions
+            # For Itel: use margins to prevent clipping with larger images
+            # For default: use standard margins
+            if is_itel_barcodes:
+                margin = 10  # Small margin to prevent edge clipping for scaled Itel images
+            else:
+                margin = 20  # Standard margin for default barcodes
             available_width = page_width - (2 * margin)
             available_height = page_height - (2 * margin)
             
@@ -1210,10 +1280,17 @@ class BarcodeService:
             cell_width = available_width / grid_cols
             cell_height = available_height / grid_rows
             
-            # Calculate base image size - use full cell
-            image_padding = 0
-            base_image_width = cell_width
-            base_image_height = cell_height
+            # Calculate base image size
+            # For Itel: no padding, use full cell for scaling
+            # For default: use standard padding
+            if is_itel_barcodes:
+                image_padding = 0
+                base_image_width = cell_width
+                base_image_height = cell_height
+            else:
+                image_padding = 2  # Standard padding for default barcodes
+                base_image_width = cell_width - (2 * image_padding)
+                base_image_height = cell_height - (2 * image_padding)
             
             # Process images in batches of grid_cols * grid_rows
             images_per_page = grid_cols * grid_rows
@@ -1245,10 +1322,6 @@ class BarcodeService:
                     row = i // grid_cols
                     col = i % grid_cols
                     
-                    # Calculate position on page - no margins or padding
-                    x = col * cell_width
-                    y = page_height - ((row + 1) * cell_height)
-                    
                     try:
                         # Verify file is readable
                         if not os.access(image_path, os.R_OK):
@@ -1258,64 +1331,72 @@ class BarcodeService:
                         # Add image to PDF with explicit memory management
                         image_reader = None
                         try:
-                            # Get actual image dimensions and scale up
-                            from PIL import Image as PILImage
-                            with PILImage.open(image_path) as img:
-                                original_width, original_height = img.size
-                                
-                                # Calculate scale factor to make image larger
-                                # Scale to fill cell and then add extra scaling
-                                scale_factor = 1.5  # 150% of cell size
-                                scaled_width = base_image_width * scale_factor
-                                scaled_height = base_image_height * scale_factor
-                                
-                                # Maintain aspect ratio based on original image
-                                img_aspect = original_width / original_height
-                                cell_aspect = base_image_width / base_image_height
-                                
-                                # If image aspect doesn't match cell, adjust to maintain image aspect
-                                if abs(img_aspect - cell_aspect) > 0.1:
-                                    if img_aspect > cell_aspect:
-                                        # Image is wider - use width as base
-                                        scaled_height = scaled_width / img_aspect
-                                    else:
-                                        # Image is taller - use height as base
-                                        scaled_width = scaled_height * img_aspect
-                                
-                                # Calculate cell boundaries (within margins)
-                                cell_left = margin + (col * cell_width)
-                                cell_bottom = page_height - margin - ((row + 1) * cell_height)
-                                cell_right = cell_left + cell_width
-                                cell_top = cell_bottom + cell_height
-                                
-                                # Center the scaled image in the cell
-                                cell_center_x = cell_left + (cell_width / 2)
-                                cell_center_y = cell_bottom + (cell_height / 2)
-                                
-                                # Calculate position for 'sw' anchor (bottom-left corner)
-                                x = cell_center_x - (scaled_width / 2)
-                                y = cell_center_y - (scaled_height / 2)
-                                
-                                # Constrain to page boundaries to prevent clipping
-                                # Ensure image doesn't go beyond left/right margins
-                                if x < margin:
-                                    x = margin
-                                if x + scaled_width > page_width - margin:
-                                    x = page_width - margin - scaled_width
-                                
-                                # Ensure image doesn't go beyond top/bottom margins
-                                if y < margin:
-                                    y = margin
-                                if y + scaled_height > page_height - margin:
-                                    y = page_height - margin - scaled_height
-                                
-                                if i == 0:  # Log first image for debugging
-                                    print(f"📏 Image scaling: original={original_width}x{original_height}, cell={base_image_width:.1f}x{base_image_height:.1f}, scaled={scaled_width:.1f}x{scaled_height:.1f}, pos=({x:.1f}, {y:.1f})")
+                            # Calculate position and scale based on barcode type
+                            # For Itel: use centered positioning with 150% scaling
+                            # For default: use standard positioning, no scaling
+                            if is_itel_barcodes:
+                                # Get actual image dimensions and scale up for Itel
+                                from PIL import Image as PILImage
+                                with PILImage.open(image_path) as img:
+                                    original_width, original_height = img.size
+                                    
+                                    # Calculate scale factor to make image larger (150% for Itel)
+                                    scale_factor = 1.5  # 150% of cell size
+                                    scaled_width = base_image_width * scale_factor
+                                    scaled_height = base_image_height * scale_factor
+                                    
+                                    # Maintain aspect ratio based on original image
+                                    img_aspect = original_width / original_height
+                                    cell_aspect = base_image_width / base_image_height
+                                    
+                                    # If image aspect doesn't match cell, adjust to maintain image aspect
+                                    if abs(img_aspect - cell_aspect) > 0.1:
+                                        if img_aspect > cell_aspect:
+                                            # Image is wider - use width as base
+                                            scaled_height = scaled_width / img_aspect
+                                        else:
+                                            # Image is taller - use height as base
+                                            scaled_width = scaled_height * img_aspect
+                                    
+                                    # Calculate cell boundaries (within margins)
+                                    cell_left = margin + (col * cell_width)
+                                    cell_bottom = page_height - margin - ((row + 1) * cell_height)
+                                    
+                                    # Center the scaled image in the cell
+                                    cell_center_x = cell_left + (cell_width / 2)
+                                    cell_center_y = cell_bottom + (cell_height / 2)
+                                    
+                                    # Calculate position for 'sw' anchor (bottom-left corner)
+                                    x = cell_center_x - (scaled_width / 2)
+                                    y = cell_center_y - (scaled_height / 2)
+                                    
+                                    # Constrain to page boundaries to prevent clipping
+                                    if x < margin:
+                                        x = margin
+                                    if x + scaled_width > page_width - margin:
+                                        x = page_width - margin - scaled_width
+                                    if y < margin:
+                                        y = margin
+                                    if y + scaled_height > page_height - margin:
+                                        y = page_height - margin - scaled_height
+                                    
+                                    if i == 0:  # Log first image for debugging
+                                        print(f"📏 Itel image scaling: original={original_width}x{original_height}, cell={base_image_width:.1f}x{base_image_height:.1f}, scaled={scaled_width:.1f}x{scaled_height:.1f}, pos=({x:.1f}, {y:.1f})")
+                                    
+                                    image_reader = ImageReader(image_path)
+                                    # Draw image at scaled size, constrained to page boundaries
+                                    c.drawImage(image_reader, x, y, 
+                                              width=scaled_width, height=scaled_height, 
+                                              preserveAspectRatio=True, anchor='sw', mask='auto')
+                            else:
+                                # Default barcodes: standard positioning, no scaling
+                                x = margin + (col * cell_width) + image_padding
+                                y = page_height - margin - ((row + 1) * cell_height) + image_padding
                                 
                                 image_reader = ImageReader(image_path)
-                                # Draw image at scaled size, constrained to page boundaries
+                                # Draw image at standard size, no scaling
                                 c.drawImage(image_reader, x, y, 
-                                          width=scaled_width, height=scaled_height, 
+                                          width=base_image_width, height=base_image_height, 
                                           preserveAspectRatio=True, anchor='sw', mask='auto')
                             
                             # Log progress every 10 images or for first/last
@@ -1348,6 +1429,17 @@ class BarcodeService:
                     except:
                         pass
                 raise  # Re-raise since PDF save failure is critical
+            finally:
+                # Clean up PDF canvas to free memory
+                try:
+                    if c is not None:
+                        # ReportLab canvas doesn't have explicit close, but we can help GC
+                        del c
+                        import gc
+                        gc.collect()
+                        print(f"🧹 Cleaned up PDF canvas and ran garbage collection")
+                except Exception as cleanup_error:
+                    print(f"⚠️  Warning: Error cleaning up PDF canvas: {cleanup_error}")
             
             # Verify PDF was created and get file size
             if not os.path.exists(pdf_path):
@@ -1389,6 +1481,11 @@ class BarcodeService:
             print(f"📊 Total images included: {len(barcode_files)}")
             print(f"📄 Total pages: {total_pages}")
             print(f"📐 Grid layout: {grid_cols} columns × {grid_rows} rows")
+            
+            # Final memory cleanup after PDF creation
+            import gc
+            gc.collect()
+            print(f"🧹 Final garbage collection completed after PDF creation")
             
             # NOTE: PNG files are NOT cleaned up here. They will be archived when a new session starts.
             # This ensures files are available for verification and download until the next upload.
