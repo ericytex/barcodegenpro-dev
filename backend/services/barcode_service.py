@@ -910,6 +910,24 @@ class BarcodeService:
             if not os.path.exists(self.output_dir):
                 os.makedirs(self.output_dir, exist_ok=True, mode=0o755)
             
+            # Create a reusable renderer to avoid memory accumulation
+            # Convert template to dict for renderer initialization
+            if hasattr(template, 'model_dump'):
+                template_dict = template.model_dump()
+            elif hasattr(template, 'dict'):
+                template_dict = template.dict()
+            else:
+                template_dict = template
+            
+            from .python_canvas_renderer import PythonCanvasRenderer
+            reusable_renderer = PythonCanvasRenderer(
+                canvas_width=template_dict.get('canvas_width', 800),
+                canvas_height=template_dict.get('canvas_height', 600),
+                background_color=template_dict.get('background_color', '#ffffff'),
+                scale_factor=1.0
+            )
+            print(f"✅ TEMPLATE SERVICE: Created reusable renderer to prevent memory accumulation")
+            
             # Progress tracking
             progress_interval = max(1, len(items) // 10)  # Log every 10% or at least every item if < 10 items
             
@@ -929,7 +947,7 @@ class BarcodeService:
                     
                     # Wrap in try-except to prevent worker crash
                     try:
-                        await self._create_barcode_with_json_template(template, item, output_path)
+                        await self._create_barcode_with_json_template(template, item, output_path, reusable_renderer)
                     except Exception as render_error:
                         import sys
                         import traceback
@@ -943,6 +961,11 @@ class BarcodeService:
                         sys.stdout.flush()
                         # Re-raise to be caught by outer exception handler
                         raise
+                    
+                    # Force garbage collection every 5 barcodes to free memory
+                    if (index + 1) % 5 == 0:
+                        import gc
+                        gc.collect()
                     
                     # Verify file was created
                     if os.path.exists(output_path):
@@ -1015,6 +1038,18 @@ class BarcodeService:
             sys.stderr.flush()
             sys.stdout.flush()
             return [], f"error_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        finally:
+            # Clean up reusable renderer to free memory
+            if 'reusable_renderer' in locals():
+                try:
+                    if hasattr(reusable_renderer, 'canvas') and reusable_renderer.canvas is not None:
+                        reusable_renderer.canvas.close()
+                    del reusable_renderer
+                    import gc
+                    gc.collect()
+                    print(f"✅ TEMPLATE SERVICE: Cleaned up reusable renderer")
+                except Exception as cleanup_error:
+                    print(f"⚠️ TEMPLATE SERVICE: Error cleaning up renderer: {cleanup_error}")
     
     def create_pdf_from_barcodes(self, pdf_filename: Optional[str] = None, 
                                grid_cols: int = 5, grid_rows: int = 12, # Dashboard default 5x12
@@ -1954,7 +1989,7 @@ class BarcodeService:
             imei = item.get("imei") or item.get("IMEI") or "DEFAULT_IMEI"
             await self._create_simple_qr_code(imei, output_path)
 
-    async def _create_barcode_with_json_template(self, template, excel_row: Dict[str, Any], output_path: str):
+    async def _create_barcode_with_json_template(self, template, excel_row: Dict[str, Any], output_path: str, reusable_renderer=None):
         """Create barcode image using JSON template and Excel data with Python canvas renderer"""
         try:
             print(f"🎨 TEMPLATE RENDERER: Starting template rendering")
@@ -1991,16 +2026,20 @@ class BarcodeService:
             print(f"🔍 Template dict keys: {list(template_dict.keys())}")
             print(f"🔍 Template components count: {len(template_dict.get('components', []))}")
             
-            # Create Python canvas renderer at 1:1 scale to match canvas exactly
-            # No scaling - render at exact canvas dimensions to match frontend design
-            renderer = PythonCanvasRenderer(
-                canvas_width=template_dict.get('canvas_width', 600),  # Use dashboard default
-                canvas_height=template_dict.get('canvas_height', 200),  # Use dashboard default
-                background_color=template_dict.get('background_color', '#ffffff'),
-                scale_factor=1.0  # 1:1 scale - no scaling, match canvas exactly
-            )
-            
-            print(f"✅ Python canvas renderer created")
+            # Reuse renderer if provided, otherwise create new one
+            if reusable_renderer is not None:
+                renderer = reusable_renderer
+                print(f"✅ Reusing provided renderer (prevents memory accumulation)")
+            else:
+                # Create Python canvas renderer at 1:1 scale to match canvas exactly
+                # No scaling - render at exact canvas dimensions to match frontend design
+                renderer = PythonCanvasRenderer(
+                    canvas_width=template_dict.get('canvas_width', 600),  # Use dashboard default
+                    canvas_height=template_dict.get('canvas_height', 200),  # Use dashboard default
+                    background_color=template_dict.get('background_color', '#ffffff'),
+                    scale_factor=1.0  # 1:1 scale - no scaling, match canvas exactly
+                )
+                print(f"✅ Python canvas renderer created")
             
             # Render the template with Excel data
             rendered_image = None
@@ -2042,13 +2081,21 @@ class BarcodeService:
                 if rendered_image is not None:
                     rendered_image.close()
                     del rendered_image
-                # Clean up renderer canvas
-                if hasattr(renderer, 'canvas') and renderer.canvas is not None:
-                    renderer.canvas.close()
-                    del renderer.canvas
-                if hasattr(renderer, 'draw') and renderer.draw is not None:
-                    del renderer.draw
-                del renderer
+                # Only clean up renderer if we created it (not if it's reusable)
+                if reusable_renderer is None:
+                    # Clean up renderer canvas only if we own it
+                    if hasattr(renderer, 'canvas') and renderer.canvas is not None:
+                        renderer.canvas.close()
+                        del renderer.canvas
+                    if hasattr(renderer, 'draw') and renderer.draw is not None:
+                        del renderer.draw
+                    del renderer
+                else:
+                    # For reusable renderer, just reset the canvas for next use
+                    if hasattr(renderer, 'canvas') and renderer.canvas is not None:
+                        # Reset canvas to blank for next barcode
+                        renderer.canvas = Image.new('RGB', (renderer.scaled_width, renderer.scaled_height), renderer.background_color)
+                        renderer.draw = ImageDraw.Draw(renderer.canvas)
             
             print(f"✅ File verified: {output_path} ({file_size} bytes)")
             
